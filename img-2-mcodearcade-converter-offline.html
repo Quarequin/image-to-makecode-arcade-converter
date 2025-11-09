@@ -5,6 +5,9 @@
 	    <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Image to MakeCode Arcade Converter</title>
         <style>
+:root {
+    --img-range: 30rem;
+}
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
     font-size: 18px;
@@ -158,18 +161,36 @@ canvas {
     float: left;
     padding: 5px;
     margin: 2.5px;
+    max-height: var(--img-range);
+    max-width: var(--img-range);
+    min-height: var(--img-range);
+    min-width: var(--img-range);
 }
-img {
+body > img:not(.show) {
+    position: absolute;
+    right: -10000%;top: -10000%; /* Hide the original image */
+}
+img.show {
     float: left;
     padding: 5px;
     margin: 2.5px;
+    /*
+    max-height: var(--img-range);
+    max-width: var(--img-range);
+    min-height: var(--img-range);
+    min-width: var(--img-range);
+    */
+}
+canvas img.show {
+    margin: 2px;
+    border: #fff 1px solid;
 }
 div.output {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
-    justify-content: center; /* Center content */
-    align-content: center; /* Center content vertically */
+    justify-content: center;
+    align-content: center;
     border: 1px dashed rgb(255, 240, 157); /* Added border */
     border-radius: 0.3em; /* Rounded corners */
     padding: 5px;
@@ -243,6 +264,9 @@ input[type="file"] {
         margin-left: 11.75rem;
         margin-top: -35.25rem;
     }
+    :root {
+        --img-range: 20rem;
+    }
     
 }
 
@@ -265,6 +289,9 @@ input[type="file"] {
         max-width: fit-content;
         margin-left: 10rem;
         margin-top: -35.25rem;
+    }
+    :root {
+        --img-range: 20rem;
     }
 }
 
@@ -293,6 +320,9 @@ input[type="file"] {
     }
     div.output {
         flex-direction: row;
+    }
+    :root {
+        --img-range: 20rem;
     }
     
 }
