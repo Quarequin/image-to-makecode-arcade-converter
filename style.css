@@ -167,10 +167,12 @@ img.show {
     float: left;
     padding: 5px;
     margin: 2.5px;
+    /*
     max-height: var(--img-range);
     max-width: var(--img-range);
     min-height: var(--img-range);
     min-width: var(--img-range);
+    */
 }
 canvas img.show {
     margin: 2px;
@@ -317,3 +319,4 @@ input[type="file"] {
     }
     
 }
+
