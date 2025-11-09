@@ -154,10 +154,12 @@ canvas {
     float: left;
     padding: 5px;
     margin: 2.5px;
+    /*
     max-height: var(--img-range);
     max-width: var(--img-range);
     min-height: var(--img-range);
     min-width: var(--img-range);
+    */
 }
 body > img:not(.show) {
     position: absolute;
@@ -319,4 +321,5 @@ input[type="file"] {
     }
     
 }
+
 
