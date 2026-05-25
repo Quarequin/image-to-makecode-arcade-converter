@@ -1,325 +1,281 @@
 :root {
-    --img-range: 30rem;
-}
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-    font-size: 14px;
-    padding: 10px;
-    border-radius: 12px;
-    background-color: #000;
-    color: #fff;
-}
-input[disabled] {
-    pointer-events: none;
-}
-#parameters {
-    border: 1px solid black;
-    background: #000;
-    border-color: green;
-    color: white;
-    margin: 10px 0;
-    padding: 5px;
-    border-radius: 0.3em;
-    position: relative;
-    height: 56.5rem;
-}
-#left {
-    margin-right: 80px;
-}
-.colorboard {
-    float: left;
-    display: flex;
-    padding: 2px;
-    margin-top: -0.25rem;
-    margin-left: -3.25rem;
-    position: relative;
-    flex-direction: column;
-    width: 39rem;
-    .colorpad {
+        --img-range: 30rem;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+          Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+        font-size: 14px;
+        padding: 10px;
+        border-radius: 12px;
+        background-color: #000;
+        color: #fff;
+      }
+      input[disabled] {
+        pointer-events: none;
+      }
+      #parameters {
+        border: 1px solid black;
+        background: #000;
+        border-color: green;
+        color: white;
+        margin: 10px 0;
+        padding: 5px;
+        border-radius: 0.3em;
+        position: relative;
+        height: 56.5rem;
+      }
+      #left {
+        margin-right: 80px;
+      }
+      .colorboard {
+        float: left;
+        display: flex;
+        padding: 2px;
+        margin-top: -0.25rem;
+        margin-left: -3.25rem;
+        position: relative;
+        flex-direction: column;
+        width: 39rem;
+      }
+      .colorboard .colorpad {
         display: flex;
         flex-direction: row;
         flex-wrap: wrap;
         float: left;
         max-width: 39rem;
-        .color-pair {
-            margin-left: -2px;
-            display: flex;
-            flex-direction: row;
-            flex-wrap: wrap;
-            padding: 2px;
-            max-width: 12rem;
-            label {
-                margin-right: 1.5px;
-            }
-            span {
-                flex-wrap: wrap;
-            }
-            .colortext {
-                transform: translateY(25%);
-                margin-left: -1px;
-            }
-        }
-    }
-}
-#colpad1 {
-    bottom: 10px;
-}
-#colpad2 {
-    bottom: 20px;
-}
-#colpad3 {
-    bottom: 30px;
-}
-button#run {
-    float: left;
-}
-#vleft {
-    margin-right: 50px;
-}
-.half {
-    float: left;
-    margin-right: 20px; /* Added space between halves */
-}
-.colorpick {
-    float: center;
-}
-label {
-    display: block;
-    margin: 10px 0; /* Adjusted margin */
-}
-button {
-    display: block;
-    color: #fff;
-    background-color: #000;
-    border-color: #fff;
-    border-style: solid;
-    border-radius: 1em;
-    margin-top: 20px;
-    padding: 15px;
-    cursor: pointer; /* Indicate clickable */
-}
-#run {
-    position: relative;
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
-}
-#copy {
-    position: relative;
-    margin-top: 6rem;
-}
-#download {
-    margin-top: 1rem;
-}
-button:disabled {
-    border-color: lightblue;
-    cursor: not-allowed; /* Indicate not clickable */
-}
-input {
-    background-color: #000;
-    border-color: #fff;
-    color: #fff;
-    border-style: solid;
-    border-radius: 0.3em;
-}
-input.colortext[type="text"] {
-    width: 3.5rem;
-    margin-bottom: 10px;
-}
-input[type="number"] {
-    display: block;
-    padding: 5px;
-    max-width: 100px;
-    margin-bottom: 10px;
-}
-textarea {
-    clear: both;
-    display: block;
-    border-radius: 1.2em;
-    background-color: #000;
-    color: #fff;
-    width: calc(100%); /* Adjusted width */
-    padding: 10px;
-    min-height: 20rem; /* Added min-height */
-    box-sizing: border-box;
-}
-#status {
-    margin-bottom: 10px;
-    background-color: lemonchiffon;
-    color: #333; /* Darker color for readability */
-    padding: 5px;
-    border-radius: 0.3em;
-    display: inline-block; /* Only take necessary width */
-}
-canvas {
-    float: left;
-    padding: 5px;
-    margin: 2.5px;
-    /*
-    max-height: var(--img-range);
-    max-width: var(--img-range);
-    min-height: var(--img-range);
-    min-width: var(--img-range);
-    */
-}
-body > img:not(.show) {
-    position: absolute;
-    right: -10000%;top: -10000%; /* Hide the original image */
-}
-img.show {
-    float: left;
-    padding: 5px;
-    margin: 2.5px;
-    /*
-    max-height: var(--img-range);
-    max-width: var(--img-range);
-    min-height: var(--img-range);
-    min-width: var(--img-range);
-    */
-}
-canvas img.show {
-    margin: 2px;
-    border: #fff 1px solid;
-}
-div.output {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-content: center;
-    border: 1px dashed rgb(255, 240, 157); /* Added border */
-    border-radius: 0.3em; /* Rounded corners */
-    padding: 5px;
-    margin: 1px;
-    max-width: 100%;
-}
-#info {
-    background-color: #000;
-    border: 1px solid hsl(100, 50%, 50%);
-    color: white;
-    margin-bottom: 1em;
-    padding: 0.5em;
-    padding-top: 0;
-    width: 600px;
-    border-radius: 2em;
-}
-div#info {
-    width: calc(100% - 20px); /* Adjusted width for smaller screens */
-}
-input[type="file"] {
-    background-color: #000;
-    border-color: #fff;
-    color: white;
-    padding: 1em; /* Adjusted padding */
-    border: 1px solid hsl(40, 50%, 50%);
-    display: block; /* Make it block */
-    margin-bottom: 20px; /* Add space below */
-    #myPal {
-        margin-right: 30px;
-    }
-}
-
-/* --- New Styles for Mode Selection and Dot Matrix Options --- */
-.mode-selection {
-    margin-bottom: 20px;
-    padding: 10px;
-    border: 1px dashed gray;
-    border-radius: 0.5em;
-}
-
-.hidden {
-    display: none;
-}
-
-.color-pair {
-    display: flex;
-    align-items: center;
-    margin-bottom: 10px;
-}
-.color-pair label {
-    margin: 0 10px 0 0;
-}
-.color-pair input[type="color"] {
-    margin-right: 5px;
-}
-
-@media (min-width: 900px) and (max-width: 1050px) {
-    .half {
-        float: top;
-        margin-right: 0; /* Reset margin for smaller screens */
-        from {
-            display: flex;
-            flex-direction: row;
-            flex-wrap: wrap;
-            max-width: 30rem;
-            max-height: 20rem;
-        }
-    }
-    .colorboard {
-        max-width: 39rem;
-        margin-left: 11.75rem;
-        margin-top: -35.25rem;
-    }
-    :root {
-        --img-range: 20rem;
-    }
-    
-}
-
-@media (min-width: 580px) and (max-width: 900px) {
-    body {
-        padding: 2px;
-    }
-    .half {
-        float: top;
-        margin-right: 0; /* Reset margin for smaller screens */
-        from {
-            display: flex;
-            flex-direction: row;
-            flex-wrap: wrap;
-            max-width: 30rem;
-            max-height: 20rem;
-        }
-    }
-    .colorboard {
-        max-width: fit-content;
-        margin-left: 10rem;
-        margin-top: -35.25rem;
-    }
-    :root {
-        --img-range: 20rem;
-    }
-}
-
-@media (max-width: 580px) {
-    body {
-        padding: 2px;
-    }
-    .half {
-        float: top;
-        margin-right: 0; /* Reset margin for smaller screens */
-        from {
-            display: flex;
-            flex-direction: row;
-            flex-wrap: wrap;
-            max-width: 30rem;
-            max-height: 20rem;
-        }
-    }
-    #parameters {
-        height: 62.5rem;
-    }
-    .colorboard {
-        max-width: 15rem;
-        margin-top: -37.75rem;
-        margin-left: 8.75rem;
-    }
-    div.output {
+      }
+      .colorboard .colorpad .color-pair {
+        margin-left: -2px;
+        display: flex;
         flex-direction: row;
-    }
-    :root {
-        --img-range: 20rem;
-    }
-    
-}
-
-
+        flex-wrap: wrap;
+        padding: 2px;
+        max-width: 12rem;
+      }
+      .colorboard .colorpad .color-pair label {
+        margin-right: 1.5px;
+      }
+      .colorboard .colorpad .color-pair span {
+        flex-wrap: wrap;
+      }
+      .colorboard .colorpad .color-pair .colortext {
+        transform: translateY(25%);
+        margin-left: -1px;
+      }
+      #colpad1 {
+        bottom: 10px;
+      }
+      #colpad2 {
+        bottom: 20px;
+      }
+      #colpad3 {
+        bottom: 30px;
+      }
+      button#run {
+        float: left;
+      }
+      #vleft {
+        margin-right: 50px;
+      }
+      .half {
+        float: left;
+        margin-right: 20px;
+      }
+      .colorpick {
+        float: center;
+      }
+      label {
+        display: block;
+        margin: 10px 0;
+      }
+      button {
+        display: block;
+        color: #fff;
+        background-color: #000;
+        border-color: #fff;
+        border-style: solid;
+        border-radius: 1em;
+        margin-top: 20px;
+        padding: 15px;
+        cursor: pointer;
+      }
+      #run {
+        position: relative;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+      }
+      #copy {
+        position: relative;
+        margin-top: 6rem;
+      }
+      #download {
+        margin-top: 1rem;
+      }
+      button:disabled {
+        border-color: lightblue;
+        cursor: not-allowed;
+      }
+      input {
+        background-color: #000;
+        border-color: #fff;
+        color: #fff;
+        border-style: solid;
+        border-radius: 0.3em;
+      }
+      input.colortext[type="text"] {
+        width: 3.5rem;
+        margin-bottom: 10px;
+      }
+      input[type="number"] {
+        display: block;
+        padding: 5px;
+        max-width: 100px;
+        margin-bottom: 10px;
+      }
+      textarea {
+        clear: both;
+        display: block;
+        border-radius: 1.2em;
+        background-color: #000;
+        color: #fff;
+        width: calc(100%);
+        padding: 10px;
+        min-height: 20rem;
+        box-sizing: border-box;
+      }
+      #status {
+        margin-bottom: 10px;
+        background-color: lemonchiffon;
+        color: #333;
+        padding: 5px;
+        border-radius: 0.3em;
+        display: inline-block;
+      }
+      canvas {
+        float: left;
+        padding: 5px;
+        margin: 2.5px;
+      }
+      body > img:not(.show) {
+        position: absolute;
+        right: -10000%;
+        top: -10000%;
+      }
+      img.show {
+        float: left;
+        padding: 5px;
+        margin: 2.5px;
+      }
+      canvas img.show {
+        margin: 2px;
+        border: #fff 1px solid;
+      }
+      div.output {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-content: center;
+        border: 1px dashed rgb(255, 240, 157);
+        border-radius: 0.3em;
+        padding: 5px;
+        margin: 1px;
+        max-width: 100%;
+      }
+      #info {
+        background-color: #000;
+        border: 1px solid hsl(100, 50%, 50%);
+        color: white;
+        margin-bottom: 1em;
+        padding: 0.5em;
+        padding-top: 0;
+        width: 600px;
+        border-radius: 2em;
+      }
+      div#info {
+        width: calc(100% - 20px);
+      }
+      input[type="file"] {
+        background-color: #000;
+        border-color: #fff;
+        color: white;
+        padding: 1em;
+        border: 1px solid hsl(40, 50%, 50%);
+        display: block;
+        margin-bottom: 20px;
+      }
+      .mode-selection {
+        margin-bottom: 20px;
+        padding: 10px;
+        border: 1px dashed gray;
+        border-radius: 0.5em;
+      }
+      .hidden {
+        display: none;
+      }
+      .color-pair {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .color-pair label {
+        margin: 0 10px 0 0;
+      }
+      .color-pair input[type="color"] {
+        margin-right: 5px;
+      }
+      @media (min-width: 900px) and (max-width: 1050px) {
+        .half {
+          float: top;
+          margin-right: 0;
+        }
+        .colorboard {
+          max-width: 39rem;
+          margin-left: 11.75rem;
+          margin-top: -35.25rem;
+        }
+        :root {
+          --img-range: 20rem;
+        }
+      }
+      @media (min-width: 580px) and (max-width: 900px) {
+        body {
+          padding: 2px;
+        }
+        .half {
+          float: top;
+          margin-right: 0;
+        }
+        .colorboard {
+          max-width: fit-content;
+          margin-left: 10rem;
+          margin-top: -35.25rem;
+        }
+        :root {
+          --img-range: 20rem;
+        }
+      }
+      @media (max-width: 580px) {
+        body {
+          padding: 2px;
+        }
+        .half {
+          float: top;
+          margin-right: 0;
+        }
+        #parameters {
+          height: 62.5rem;
+        }
+        .colorboard {
+          max-width: 15rem;
+          margin-top: -37.75rem;
+          margin-left: 8.75rem;
+        }
+        div.output {
+          flex-direction: row;
+        }
+        :root {
+          --img-range: 20rem;
+        }
+          }
