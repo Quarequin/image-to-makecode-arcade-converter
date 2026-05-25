@@ -7,142 +7,105 @@
         <link rel="stylesheet" href="style.css">
     </head>
     <body>
-    
-        <h1>Image to MakeCode Arcade Converter</h1>
-        
-        <div id="info">
-            <p>Upload an image (JPG, PNG, GIF) to convert it into MakeCode Arcade sprite code. Select processing mode and options.</p>
-            <p>Please Note. GIF images are not supported because the owner of the gifuct-js module has removed it.</p>
-        </div>
-    
-        <p>image input</p> <input type="file" id="myFile" accept="image/*"/> 
-        <p>pallete input</p> <input type="file" id="myPal" accept=".hex"/>
-        
-        <div id="status">Waiting for file...</div>
-        
-        <div id="parameters">
-            <h2>Parameters</h2>
-        
-            <div class="mode-selection">
-                <h3>Processing Mode</h3>
-                <label><input type="radio" name="processingMode" id="modeSolid" value="solid" checked/> Solid Color (16-color palette)</label>
-                <label><input type="radio" name="processingMode" id="modeDotMatrix" value="dotMatrix"/> Dot Matrix (16-color palette)</label>
-            </div>
-        
-            <div class="half">
-                <h3>Image Size</h3>
-                <form>
-                    <label>
-                        <input type="radio" name="sizeOption" id="full-width" checked/> Full width 160
-                    </label>
-                    <label>
-                        <input type="radio" name="sizeOption" id="full-height" /> Full height 120
-                    </label>
-                    <label>
-                        <input type="radio" name="sizeOption" id="scale" /> Scale by factor:
-                    </label>
-                    <input type="number" id="factor" disabled value="0.1" step="0.01"/>
-                    <label>
-                        <input type="radio" name="sizeOption" id="custom" /> Custom size:
-                    </label>
-                    <label for="width">Width:</label>
-                    <input type="number" class="custom" disabled id="width">
-                    <label for="height">Height:</label>
-                    <input type="number" class="custom" disabled id="height">
-                    <label for="ratio"><input type="checkbox" class="custom" disabled id="ratio" onclick="getRatioChecking()"/> size ratio</label>
-                    <button id="run" disabled>Convert Image</button>
-                    <button id="copy" disabled>Copy code</button>
-                    <button id="download" disabled>Download code</button>
-                </form>
-            </div>
-        
-            <div class="half colorboard" >
-                <h3>16-Color Palette</h3>
-                <div class="colorpad">
-                    <div class="color-pair">
-                        <label for="col1">Color 1:</label>
-                        <input type="color" id="col1" value="#ffffff" class="colorpicker">
-                        <input type="text" id="col1" value="#ffffff" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col2">Color 2:</label>
-                        <input type="color" id="col2" value="#ff2121" class="colorpicker">
-                        <input type="text" id="col2" value="#ff2121" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col3">Color 3:</label>
-                        <input type="color" id="col3" value="#ff93c4" class="colorpicker">
-                        <input type="text" id="col3" value="#ff93c4" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col4">Color 4:</label>
-                        <input type="color" id="col4" value="#ff8135" class="colorpicker">
-                        <input type="text" id="col4" value="#ff8135" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col5">Color 5:</label>
-                        <input type="color" id="col5" value="#fff609" class="colorpicker">
-                        <input type="text" id="col5" value="#fff609" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col6">Color 6:</label>
-                        <input type="color" id="col6" value="#249ca3" class="colorpicker">
-                        <input type="text" id="col6" value="#249ca3" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col7">Color 7:</label>
-                        <input type="color" id="col7" value="#78dc52" class="colorpicker">
-                        <input type="text" id="col7" value="#78dc52" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col8">Color 8:</label>
-                        <input type="color" id="col8" value="#003fad" class="colorpicker">
-                        <input type="text" id="col8" value="#003fad" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col9">Color 9:</label>
-                        <input type="color" id="col9" value="#87f2ff" class="colorpicker">
-                        <input type="text" id="col9" value="#87f2ff" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col10">Color A:</label>
-                        <input type="color" id="col10" value="#8e2ec4" class="colorpicker">
-                        <input type="text" id="col10" value="#8e2ec4" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col11">Color B:</label>
-                        <input type="color" id="col11" value="#a4839f" class="colorpicker">
-                        <input type="text" id="col11" value="#a4839f" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col12">Color C:</label>
-                        <input type="color" id="col12" value="#5c406c" class="colorpicker">
-                        <input type="text" id="col12" value="#5c406c" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col13">Color D:</label>
-                        <input type="color" id="col13" value="#e5cdc4" class="colorpicker">
-                        <input type="text" id="col13" value="#e5cdc4" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col14">Color E:</label>
-                        <input type="color" id="col14" value="#91463d" class="colorpicker">
-                        <input type="text" id="col14" value="#91463d" class="colortext">
-                    </div>
-                    <div class="color-pair">
-                        <label for="col15">Color F:</label>
-                        <input type="color" id="col15" value="#000000" class="colorpicker">
-                        <input type="text" id="col15" value="#000000" class="colortext">
-                    </div>
-                </div>
-            </div>
-        
-        </div>
+  <body>
+    <h1>Image to MakeCode Arcade Converter</h1>
 
-        <div class="output"><canvas width="0px" height="0px"></canvas></div>
-        
-        <textarea class="" id="" rows="10" cols="80" style="resize: none;" readonly></textarea>
-            
+    <div id="info">
+      <p>Upload an image (JPG, PNG, GIF) to convert it into MakeCode Arcade sprite code. Select processing mode and options.</p>
+      <p><strong>Note:</strong> GIF animations are natively supported via embedded offline omggif module.</p>
+    </div>
+
+    <p>Image input</p> 
+    <input type="file" id="myFile" accept="image/*" />
+    <p>Palette input</p> 
+    <input type="file" id="myPal" accept=".hex" />
+
+    <div id="status">Waiting for file...</div>
+
+    <div id="parameters">
+      <h2>Parameters</h2>
+
+      <div class="mode-selection">
+        <h3>Processing Mode</h3>
+        <label>
+          <input type="radio" name="processingMode" id="modeSolid" value="solid" checked />
+          Solid Color (16-color palette)
+        </label>
+        <label>
+          <input type="radio" name="processingMode" id="modeMatrix-errorDefusion" value="errorDefusion" />
+          Defusion Matrix (16-color palette)
+        </label>
+        <label>
+          <input type="radio" name="processingMode" id="modeMatrix-dotBayer" value="bayerMatrix" />
+          Bayer Matrix (16-color palette)
+        </label>
+      </div>
+
+      <div class="half">
+        <h3>Image Size</h3>
+        <form>
+          <label>
+            <input type="radio" name="sizeOption" id="full-width" checked />
+            Full width 160
+          </label>
+          <label>
+            <input type="radio" name="sizeOption" id="full-height" /> 
+            Full height 120
+          </label>
+          <label>
+            <input type="radio" name="sizeOption" id="scale" /> 
+            Scale by factor:
+          </label>
+          <input type="number" id="factor" disabled value="0.1" step="0.01" />
+          <label>
+            <input type="radio" name="sizeOption" id="custom" /> 
+            Custom size:
+          </label>
+          <label for="width">Width:</label>
+          <input type="number" class="custom" disabled id="width" />
+          <label for="height">Height:</label>
+          <input type="number" class="custom" disabled id="height" />
+          <label for="ratio">
+            <input type="checkbox" class="custom" disabled id="ratio" onclick="getRatioChecking()" />
+            Keep Aspect Ratio
+          </label>
+          <button id="run" disabled>Convert Image</button>
+          <button id="copy" disabled>Copy code</button>
+          <button id="download" disabled>Download code</button>
+        </form>
+      </div>
+
+      <div class="half colorboard">
+        <h3>16-Color Palette</h3>
+        <div class="colorpad">
+          <div class="color-pair"><label for="col1">Color 1:</label><input type="color" id="col1" value="#ffffff" class="colorpicker" /><input type="text" id="col1" value="#ffffff" class="colortext" /></div>
+          <div class="color-pair"><label for="col2">Color 2:</label><input type="color" id="col2" value="#ff2121" class="colorpicker" /><input type="text" id="col2" value="#ff2121" class="colortext" /></div>
+          <div class="color-pair"><label for="col3">Color 3:</label><input type="color" id="col3" value="#ff93c4" class="colorpicker" /><input type="text" id="col3" value="#ff93c4" class="colortext" /></div>
+          <div class="color-pair"><label for="col4">Color 4:</label><input type="color" id="col4" value="#ff8135" class="colorpicker" /><input type="text" id="col4" value="#ff8135" class="colortext" /></div>
+          <div class="color-pair"><label for="col5">Color 5:</label><input type="color" id="col5" value="#fff609" class="colorpicker" /><input type="text" id="col5" value="#fff609" class="colortext" /></div>
+          <div class="color-pair"><label for="col6">Color 6:</label><input type="color" id="col6" value="#249ca3" class="colorpicker" /><input type="text" id="col6" value="#249ca3" class="colortext" /></div>
+          <div class="color-pair"><label for="col7">Color 7:</label><input type="color" id="col7" value="#78dc52" class="colorpicker" /><input type="text" id="col7" value="#78dc52" class="colortext" /></div>
+          <div class="color-pair"><label for="col8">Color 8:</label><input type="color" id="col8" value="#003fad" class="colorpicker" /><input type="text" id="col8" value="#003fad" class="colortext" /></div>
+          <div class="color-pair"><label for="col9">Color 9:</label><input type="color" id="col9" value="#87f2ff" class="colorpicker" /><input type="text" id="col9" value="#87f2ff" class="colortext" /></div>
+          <div class="color-pair"><label for="col10">Color A:</label><input type="color" id="col10" value="#8e2ec4" class="colorpicker" /><input type="text" id="col10" value="#8e2ec4" class="colortext" /></div>
+          <div class="color-pair"><label for="col11">Color B:</label><input type="color" id="col11" value="#a4839f" class="colorpicker" /><input type="text" id="col11" value="#a4839f" class="colortext" /></div>
+          <div class="color-pair"><label for="col12">Color C:</label><input type="color" id="col12" value="#5c406c" class="colorpicker" /><input type="text" id="col12" value="#5c406c" class="colortext" /></div>
+          <div class="color-pair"><label for="col13">Color D:</label><input type="color" id="col13" value="#e5cdc4" class="colorpicker" /><input type="text" id="col13" value="#e5cdc4" class="colortext" /></div>
+          <div class="color-pair"><label for="col14">Color E:</label><input type="color" id="col14" value="#91463d" class="colorpicker" /><input type="text" id="col14" value="#91463d" class="colortext" /></div>
+          <div class="color-pair"><label for="col15">Color F:</label><input type="color" id="col15" value="#000000" class="colorpicker" /><input type="text" id="col15" value="#000000" class="colortext" /></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="output"><canvas></canvas></div>
+
+    <textarea
+      id="makecodeArcadeOutput"
+      rows="10"
+      cols="80"
+      style="resize: none"
+      readonly
+    ></textarea>
         <script src="https://unpkg.com/omggif@1.0.10/omggif.js"></script>
         <script src="main.js"></script>
     </body>
