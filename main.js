@@ -1,1079 +1,595 @@
-
-// --- GIF Handler Module (omggif) ---
-const gifHandler = {
-    /**
-     * สร้าง GifReader จากไฟล์ GIF (ArrayBuffer)
-     * @param {ArrayBuffer} arrayBuffer
-     * @returns {omggif.GifReader}
-     */
-    createReader(arrayBuffer) {
-        try {
-            return new omggif.GifReader(new Uint8Array(arrayBuffer));
-        } catch (err) {
-            console.error("Error creating GifReader:", err);
-            throw new Error("ไม่สามารถอ่านไฟล์ GIF ได้ (GifReader)");
+// --- Global Error & Exception Logger ---
+      // ดักจับ Error ทุกรูปแบบในหน้าเว็บ (ตั้งแต่ต้นทางถึงปลายทาง) แล้วพ่นลง textarea ทันที
+      window.addEventListener('error', function(event) {
+        const textarea = document.getElementById("makecodeArcadeOutput");
+        const statusDiv = document.querySelector("#status");
+        if (statusDiv) statusDiv.textContent = "System Fault: Error captured.";
+        if (textarea) {
+          textarea.value = `[Global Runtime Error Log]\n` +
+                         `Message: ${event.message}\n` +
+                         `Source: ${event.filename}\n` +
+                         `Line: ${event.lineno}, Column: ${event.colno}\n\n` +
+                         `Technical Stack Trace:\n${event.error ? event.error.stack : 'No stack trace available.'}`;
         }
-    },
+      });
 
-    /**
-     * ดึงข้อมูลเฟรมทั้งหมดจาก GifReader
-     * @param {omggif.GifReader} gr
-     * @returns {Array} เฟรมทั้งหมด
-     */
-    getFrames(gr) {
-        try {
-            const frames = [];
-            for (let i = 0; i < gr.numFrames(); i++) {
-                const info = gr.frameInfo(i);
-                frames.push({
-                    index: i,
-                    delay: info.delay * 10, // ms
-                    disposal: info.disposal,
-                    dims: {
-                        left: info.x,
-                        top: info.y,
-                        width: info.width,
-                        height: info.height
+      window.addEventListener('unhandledrejection', function(event) {
+        const textarea = document.getElementById("makecodeArcadeOutput");
+        const statusDiv = document.querySelector("#status");
+        if (statusDiv) statusDiv.textContent = "System Fault: Async Promise Rejected.";
+        if (textarea) {
+          textarea.value = `[Unhandled Promise Rejection Log]\n` +
+                         `Reason: ${event.reason}\n\n` +
+                         `Technical Stack Trace:\n${event.reason && event.reason.stack ? event.reason.stack : 'No stack trace available.'}`;
+        }
+      });
+
+      // --- Embedded Offline omggif Engine Core (v1.0.10) ---
+      const omggif = (function() {
+        const exports = {};
+        function GifReader(buf) {
+          let p = 0;
+          if (buf[p++] !== 0x47 || buf[p++] !== 0x49 || buf[p++] !== 0x46 || buf[p++] !== 0x38 || (buf[p++] !== 0x37 && buf[p] !== 0x39) || buf[p++] !== 0x61) {
+            throw new Error("Invalid GIF file header format. The binary data is corrupted or modified.");
+          }
+          const width = buf[p++] | (buf[p++] << 8);
+          const height = buf[p++] | (buf[p++] << 8);
+          const pf0 = buf[p++];
+          const global_palette_flag = pf0 & 0x80;
+          const num_global_colors = 2 << (pf0 & 0x7);
+          p++; p++;
+          this.width = width; this.height = height;
+          let global_palette_offset = null;
+          if (global_palette_flag) { global_palette_offset = p; p += num_global_colors * 3; }
+          const frames = [];
+          while (p < buf.length) {
+            const block_id = buf[p++];
+            if (block_id === 0x3B) { break; }
+            if (block_id === 0x21) {
+              const label = buf[p++];
+              if (label === 0xF9) {
+                p++; const flg = buf[p++];
+                const delay = buf[p++] | (buf[p++] << 8);
+                const transparent_index = buf[p++]; p++;
+                frames.push({ x:0, y:0, width:0, height:0, has_local_palette:false, palette_offset:null, data_offset:0, data_length:0, transparent_index: (flg & 1) ? transparent_index : null, delay: delay, disposal: (flg >> 2) & 7 });
+              } else {
+                let sub_len = buf[p++]; while (sub_len !== 0) { p += sub_len; sub_len = buf[p++]; }
+              }
+            } else if (block_id === 0x2C) {
+              const x = buf[p++] | (buf[p++] << 8); const y = buf[p++] | (buf[p++] << 8);
+              const w = buf[p++] | (buf[p++] << 8); const h = buf[p++] | (buf[p++] << 8);
+              const pf1 = buf[p++]; const local_palette_flag = pf1 & 0x80;
+              const num_local_colors = 2 << (pf1 & 0x7);
+              let palette_offset = null;
+              if (local_palette_flag) { palette_offset = p; p += num_local_colors * 3; }
+              const data_offset = p; p++;
+              let sub_len = buf[p++]; while (sub_len !== 0) { p += sub_len; sub_len = buf[p++]; }
+              if (frames.length === 0 || frames[frames.length - 1].data_length !== 0) {
+                frames.push({ x: x, y: y, width: w, height: h, has_local_palette: !!local_palette_flag, palette_offset: palette_offset, data_offset: data_offset, data_length: p - data_offset, transparent_index: null, delay: 10, disposal: 0 });
+              } else {
+                const f = frames[frames.length - 1]; f.x = x; f.y = y; f.width = w; f.height = h; f.has_local_palette = !!local_palette_flag; f.palette_offset = palette_offset; f.data_offset = data_offset; f.data_length = p - data_offset;
+              }
+            }
+          }
+          this.numFrames = function() { return frames.length; };
+          this.globalPalette = function() {
+            if (!global_palette_flag) return null;
+            const res = []; for(let i=0; i<num_global_colors; i++) { res.push((buf[global_palette_offset+i*3]<<16)|(buf[global_palette_offset+i*3+1]<<8)|buf[global_palette_offset+i*3+2]); }
+            return res;
+          };
+          this.frameInfo = function(idx) { return frames[idx]; };
+          this.decodeAndBlitFrame = function(idx, pixels) {
+            const f = frames[idx];
+            const pal_offset = f.has_local_palette ? f.palette_offset : global_palette_offset;
+            if (pal_offset === null) throw new Error("Missing color palette descriptor for frame blitting.");
+            let p = f.data_offset; const min_code_size = buf[p++];
+            let clear_code = 1 << min_code_size; let end_code = clear_code + 1; let code_size = min_code_size + 1; let code_mask = (1 << code_size) - 1;
+            const prefix = new Int32Array(4096); const suffix = new Uint8Array(4096); const stack = new Uint8Array(4096);
+            let stack_p = 0;
+            for (let i = 0; i < clear_code; ++i) suffix[i] = i;
+            let n_codes = end_code + 1; let old_code = -1;
+            let bits = 0; let rem_byte = 0; let sub_len = 0; let byte_buf = 0;
+            let pixel_idx = 0; const target_length = f.width * f.height;
+            while (pixel_idx < target_length) {
+              if (bits < code_size) {
+                if (rem_byte === 0) {
+                  if (sub_len === 0) { sub_len = buf[p++]; if (sub_len === 0) break; }
+                  byte_buf = buf[p++]; rem_byte = 8; sub_len--;
+                }
+                bits |= byte_buf << (16 - rem_byte);
+                byte_buf = 0; rem_byte = 0;
+                if (sub_len === 0) { sub_len = buf[p++]; if (sub_len === 0) rem_byte = 0; else { byte_buf = buf[p++]; rem_byte = 8; sub_len--; } }
+                if (rem_byte === 0) { bits >>= 16; continue; }
+              }
+              let code = bits & code_mask; bits >>= code_size;
+              if (code === clear_code) { code_size = min_code_size + 1; code_mask = (1 << code_size) - 1; n_codes = end_code + 1; old_code = -1; continue; }
+              if (code === end_code) break;
+              if (code < n_codes) {
+                let c = code; while (c >= clear_code) { stack[stack_p++] = suffix[c]; c = prefix[c]; }
+                stack[stack_p++] = c; let first_byte = c;
+                if (old_code !== -1 && n_codes < 4096) { prefix[n_codes] = old_code; suffix[n_codes] = first_byte; n_codes++; if ((n_codes & code_mask) === 0 && code_size < 12) { code_size++; code_mask = (1 << code_size) - 1; } }
+                old_code = code;
+                while (stack_p > 0) {
+                  const out_idx = pixel_idx++; const val = stack[--stack_p];
+                  const r = out_idx % f.width; const c = Math.floor(out_idx / f.width);
+                  const real_x = f.x + r; const real_y = f.y + c;
+                  if (real_x >= 0 && real_x < width && real_y >= 0 && real_y < height) {
+                    const base = (real_y * width + real_x) * 4;
+                    if (val !== f.transparent_index) {
+                      pixels[base] = buf[pal_offset + val * 3]; pixels[base+1] = buf[pal_offset + val * 3 + 1]; pixels[base+2] = buf[pal_offset + val * 3 + 2]; pixels[base+3] = 255;
                     }
-                });
+                  }
+                }
+              } else {
+                let c = old_code; while (c >= clear_code) { stack[stack_p++] = suffix[c]; c = prefix[c]; }
+                stack[stack_p++] = c; const first_byte = c;
+                if (n_codes < 4096) { prefix[n_codes] = old_code; suffix[n_codes] = first_byte; n_codes++; if ((n_codes & code_mask) === 0 && code_size < 12) { code_size++; code_mask = (1 << code_size) - 1; } }
+                old_code = code;
+                while (stack_p > 0) {
+                  const out_idx = pixel_idx++; const val = stack[--stack_p];
+                  const real_x = f.x + (out_idx % f.width); const real_y = f.y + Math.floor(out_idx / f.width);
+                  if (real_x >= 0 && real_x < width && real_y >= 0 && real_y < height) {
+                    const base = (real_y * width + real_x) * 4;
+                    if (val !== f.transparent_index) {
+                      pixels[base] = buf[pal_offset + val * 3]; pixels[base+1] = buf[pal_offset + val * 3 + 1]; pixels[base+2] = buf[pal_offset + val * 3 + 2]; pixels[base+3] = 255;
+                    }
+                  }
+                }
+              }
             }
-            return frames;
-        } catch (err) {
-            console.error("Error getting GIF frames:", err);
-            throw new Error("ไม่สามารถอ่านเฟรม GIF ได้");
+          };
         }
-    },
+        exports.GifReader = GifReader;
+        return exports;
+      })();
 
-    /**
-     * แปลงเฟรม GIF เป็น ImageData
-     * @param {omggif.GifReader} gr
-     * @param {number} frameIndex
-     * @returns {ImageData}
-     */
-    getFrameImageData(gr, frameIndex) {
-        try {
-            const width = gr.width;
-            const height = gr.height;
-            const imageData = new ImageData(width, height);
-            gr.decodeAndBlitFrame(frameIndex, imageData.data);
-            return imageData;
-        } catch (err) {
-            console.error(`Error decoding GIF frame ${frameIndex}:`, err);
-            throw new Error(`ไม่สามารถแปลงเฟรมที่ ${frameIndex + 1} เป็น ImageData ได้`);
-        }
-    }
-};
+      // --- GIF Processor Engine Pipeline ---
+      const gifHandler = {
+        createReader(arrayBuffer) {
+          if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+            throw new Error("Source ArrayBuffer is empty or zero-byte length. Android Content Provider failed to stream file data.");
+          }
+          const typedArray = arrayBuffer instanceof Uint8Array ? arrayBuffer : new Uint8Array(arrayBuffer);
+          if (typedArray.length < 6 || typedArray[0] !== 0x47 || typedArray[1] !== 0x49 || typedArray[2] !== 0x46) {
+            throw new Error(`Invalid Magic Number [${typedArray[0]||0}, ${typedArray[1]||0}, ${typedArray[2]||0}]. The file data stream was modified or truncated by Android Content URI restrictions.`);
+          }
+          return new omggif.GifReader(typedArray);
+        },
+        getFrames(gr) {
+          const frames = [];
+          for (let i = 0; i < gr.numFrames(); i++) {
+            const info = gr.frameInfo(i);
+            frames.push({
+              index: i,
+              delay: (info.delay || 10) * 10,
+              disposal: info.disposal,
+              dims: { left: info.x, top: info.y, width: info.width, height: info.height }
+            });
+          }
+          return frames;
+        },
+        getFrameImageData(gr, frameIndex, previousCanvasCtx) {
+          const width = gr.width;
+          const height = gr.height;
+          const frameCanvas = document.createElement("canvas");
+          frameCanvas.width = width;
+          frameCanvas.height = height;
+          const frameCtx = frameCanvas.getContext("2d");
 
-let currentMode = "solid"; // "solid" or "dotMatrix"
-let currentDotMatrixType = "pattern"; // "pattern" or "solidApprox"
-let dotBlockSize = 2; // Default dot matrix block size
-let originalImageSize = { width: 0, height: 0 };
-let gifData = null; // Store parsed GIF data
-let gifMinDelay = 0; // Store minimum GIF frame delay
-let imgrender = [];
-let sizeTotal = {width: NaN, height: NaN}; // Total size for MakeCode sprite
-let imgSizeTotal = {width: NaN, height: NaN}; // Total size for image display
-let canvasName = "canvas"; // Default canvas name
-
-// --- Get DOM Elements ---
-const canvas = document.querySelector("canvas");
-const ctx = canvas.getContext("2d"); // Use ctx for context
-const copyButton = document.querySelector("button#copy");
-const runButton = document.querySelector("button#run");
-const downloadButton = document.querySelector("button#download");
-const customSizes = document.querySelectorAll("input[type='number'].custom");
-const fileInput = document.querySelector("input#myFile");
-const form = document.querySelector("form"); // Size form
-const radioButtons = document.querySelectorAll("input[name='sizeOption']"); // Size radio buttons
-const colorPicks = document.querySelectorAll("input.colorpicker[type='color']"); // Palette colors
-const colorTexts = document.querySelectorAll("input.colortext[type='text']"); // Palette text colors
-const scaleFactor = document.querySelector("input[type='number']#factor");
-const textarea = document.querySelector("textarea");
-const statusDiv = document.querySelector("#status");
-
-// New elements for mode selection and dot matrix
-const modeRadios = document.querySelectorAll("input[name='processingMode']");
-const dotMatrixOptionsDiv = document.querySelector(".dot-matrix-options");
-const dotFgColorInput = document.querySelector("#dotFgColor.colorpicker");
-const dotBgColorInput = document.querySelector("#dotBgColor.colorpicker");
-const dotFgColorText = document.querySelector("#dotFgColor.colortext");
-const dotBgColorText = document.querySelector("#dotBgColor.colortext");
-const dotMatrixTypeRadios = document.querySelectorAll("input[name='dotMatrixType']");
-const dotBlockSizeInput = document.querySelector("#dotBlockSize");
-
-// --- Helper Functions ---
-function isValidHex(hex) {
-    return /^#([0-9A-Fa-f]{6})$/.test(hex);
-}
-
-function hexToRgb(hex) {
-    const r = parseInt(hex[1] + hex[2], 16);
-    const g = parseInt(hex[3] + hex[4], 16);
-    const b = parseInt(hex[5] + hex[6], 16);
-    return { r: r, g: g, b: b};
-}
-
-function rgbToHex(r, g, b) {
-    const toHex = (c) => c.toString(16).padStart(2, '0');
-    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-function colorSqrt(color) {
-    return Math.sqrt(color.r * color.r + color.g * color.g + color.b * color.b); // คำนวณระยะห่างจากสีดำ (0, 0, 0)
-}
-
-function colorInvert(color) {
-    // ฟังก์ชันสำหรับกลับสี (invert) โดยการเปลี่ยนค่า RGB เป็น 255 - ค่าเดิม
-    return {
-        r: 255 - color.r,
-        g: 255 - color.g,
-        b: 255 - color.b,
-        a: (color.a)?color.a:255 // คงค่า alpha เดิมไว้
-    };
-}
-
-function colorDivide(color, divisor) {
-    // ฟังก์ชันสำหรับแบ่งสี (divide) โดยการหารค่า RGB ด้วยตัวหารที่กำหนด
-    return {
-        r: Math.round(color.r / divisor),
-        g: Math.round(color.g / divisor),
-        b: Math.round(color.b / divisor),
-        a: (color.a)?color.a:255 // คงค่า alpha เดิมไว้
-    };
-}
-
-function rgbToValue(color) {
-    // ฟังก์ชันสำหรับแปลงสี RGB เป็นค่าเดียว (เช่น 0xRRGGBB)
-    return (color.r << 16) | (color.g << 8) | color.b;
-}
-
-function valueToRgb(value) {
-    // ฟังก์ชันสำหรับแปลงค่าเดียว (เช่น 0xRRGGBB) กลับเป็นสี RGB
-    const r = (value >> 16) & 0xFF;
-    const g = (value >> 8) & 0xFF;
-    const b = value & 0xFF;
-    return { r: r, g: g, b: b, a: 255}; // คงค่า alpha เป็น 255
-}
-
-// ฟังก์ชันคำนวณระยะห่างสูงสุดที่เป็นไปได้ระหว่างสีสองสี (จาก #000000 ถึง #FFFFFF)
-function getMaxPossibleDistance() {
-    // ระยะห่างระหว่างดำสนิทกับขาวสนิท
-    // RGB for #000000 is (0, 0, 0)
-    // RGB for #FFFFFF is (255, 255, 255)
-    const dr = 0 - 255;
-    const dg = 0 - 255;
-    const db = 0 - 255;
-    return Math.sqrt(dr * dr + dg * dg + db * db);
-}
-
-// ฟังก์ชันหลักสำหรับเปรียบเทียบคู่สีที่ป้อนกับพาเลทสี
-async function compareColorsWithPalette(inputSqrt, palette) {
-    const inputDistance = inputSqrt;
-
-    const maxDistance = getMaxPossibleDistance();
-    let minDistanceDifference = Infinity;
-    let closestPair = {col1: null, col2: null};
-
-    // วนลูปผ่านทุกคู่สีที่เป็นไปได้ในพาเลท
-    for (let i = 1; i < palette.length; i++) {
-        for (let j = 1; j < palette.length; j++) { // เริ่มจาก j = i + 1 เพื่อหลีกเลี่ยงคู่สีซ้ำและเปรียบเทียบสีเดียวกัน
-            if (i === j) continue; // ข้ามคู่สีเดียวกัน
-            const paletteColor1 = palette[i].color;
-            const paletteColor2 = palette[j].color;
-
-            const currentPaletteDistance = colorDistance(paletteColor1, paletteColor2);
-
-            if (currentPaletteDistance === null) {
-                // ข้ามคู่สีในพาเลทที่ไม่ถูกต้อง
-                continue;
-            }
-
-
-            // คำนวณความแตกต่างของระยะห่างระหว่างคู่สีที่ป้อนกับคู่สีในพาเลท
-            const distanceDifference = Math.abs(inputDistance - currentPaletteDistance);
-
-            // หากความแตกต่างน้อยกว่าค่าต่ำสุดที่เคยเจอ ให้เก็บคู่นี้ไว้
-            if (distanceDifference < minDistanceDifference) {
-                minDistanceDifference = distanceDifference;
-                closestPair = {col1: paletteColor1, col2: paletteColor2};
-            }
-        }
-    }
-
-    // คำนวณเปอร์เซ็นต์ความเหมือน
-    // ความเหมือน 100% คือเมื่อ distanceDifference เป็น 0
-    // ความเหมือน 0% คือเมื่อ distanceDifference เท่ากับ maxDistance (ค่าสูงสุดของระยะห่าง)
-    const similarityPercentage = ((maxDistance  - minDistanceDifference) / maxDistance) * 1;
-
-    return ({percent: similarityPercentage, color1: closestPair.col1, color2: closestPair.col2}); // ส่งคืนคู่สีที่ใกล้เคียงที่สุด
-}
-
-function getPixelColor(imageData, x, y) {
-    const index = (y * imageData.width + x) * 4;
-    return {
-        r: imageData.data[index],
-        g: imageData.data[index + 1],
-        b: imageData.data[index + 2],
-        a: imageData.data[index + 3]
-    };
-}
-
-function setPixelColor(imageData, x, y, r, g, b, a = 255) {
-    const index = (y * imageData.width + x) * 4;
-    imageData.data[index] = r;
-    imageData.data[index + 1] = g;
-    imageData.data[index + 2] = b;
-    imageData.data[index + 3] = a;
-}
-
-
-function colorDistance(color1, color2) {
-    const dr = color1.r - color2.r;
-    const dg = color1.g - color2.g;
-    const db = color1.b - color2.b;
-    return Math.sqrt(dr * dr + dg * dg + db * db);
-}
-
-// --- UI Syncing ---
-function syncColorToText(colorInput) {
-    const textInput = document.querySelector(`input.colortext[id='${colorInput.id}']`);
-    if (textInput) {
-        textInput.value = colorInput.value;
-    }
-}
-
-function syncTextToColor(textInput) {
-    const colorInput = document.querySelector(`input.colorpicker[id='${textInput.id}']`);
-    if (colorInput) {
-        if (isValidHex(textInput.value)) {
-            colorInput.value = textInput.value;
-        } else {
-            textInput.value = colorInput.value;
-        }
-    }
-}
-
-colorPicks.forEach(colorInput => {
-    colorInput.addEventListener("input", function() { // Use 'input' for live update
-        syncColorToText(colorInput);
-    });
-});
-
-colorTexts.forEach(textInput => {
-    textInput.addEventListener("change", function() {
-        syncTextToColor(textInput);
-    });
-});
-
-function dragstartHandler(ev) {
-    ev.dataTransfer.setData("text", ev.target.id);
-}
-
-function dragoverHandler(ev) {
-    ev.preventDefault();
-}
-
-function dropHandler(ev) {
-    ev.preventDefault();
-    whenImageIsUploaded(); // Ensure image is loaded before processing
-}
-
-// --- Event Listeners ---
-runButton.addEventListener("click", running); // Removed duplicate listener
-fileInput.addEventListener("change", whenImageIsUploaded);
-
-radioButtons.forEach(radioButton => {
-    radioButton.addEventListener("change", function sizeOption() {
-        document.querySelector("input#width").removeAttribute("disabled")
-        document.querySelector("input#height").removeAttribute("disabled")
-        runButton.removeAttribute("disabled")
-        document.querySelector("input#ratio").removeAttribute("disabled")
-        let sizeMode = this.id;
-        if (sizeMode === "custom") {
-            if (document.querySelector("img")) {
-                document.querySelector("input#width").value = document.querySelector("img").width
-                document.querySelector("input#height").value = document.querySelector("img").height
+          if (frameIndex > 0) {
+            const prevInfo = gr.frameInfo(frameIndex - 1);
+            if (prevInfo.disposal === 2) {
+              frameCtx.clearRect(0, 0, width, height);
             } else {
-                document.querySelector("input#width").value = canvas.width
-                document.querySelector("input#height").value = canvas.height
+              frameCtx.drawImage(previousCanvasCtx.canvas, 0, 0);
             }
-        } else {
-            document.querySelector("input#ratio").setAttribute("disabled", "true")
+          }
+
+          const frameImageData = frameCtx.createImageData(width, height);
+          gr.decodeAndBlitFrame(frameIndex, frameImageData.data);
+          return frameImageData;
         }
-        customSizes.forEach(field => field.disabled = (sizeMode !== "custom"));
-        scaleFactor.disabled = (sizeMode !== "scale");
-        if (sizeMode === "scale" && scaleFactor.value === "") scaleFactor.value = 0.1; // Set default if empty
-        const img = document.querySelector("img");
-        if (img) {
-            // No need to convert immediately, wait for run button
-            // convert(img); // Or just update dimensions? Let's update dimensions first
-            updateImageDimensions(img, sizeMode);
+      };
+
+      let currentMode = "solid";
+      let originalImageSize = { width: 0, height: 0 };
+      let gifData = null;
+      let gifMinDelay = 0;
+      let imgrender = [];
+      let sizeTotal = { width: 0, height: 0 };
+      let imgSizeTotal = { width: 0, height: 0 };
+      let canvasName = "canvas";
+
+      // --- DOM Cache Elements ---
+      const canvas = document.querySelector("canvas");
+      const ctx = canvas.getContext("2d");
+      const copyButton = document.querySelector("button#copy");
+      const runButton = document.querySelector("button#run");
+      const downloadButton = document.querySelector("button#download");
+      const customSizes = document.querySelectorAll("input[type='number'].custom");
+      const fileInput = document.querySelector("input#myFile");
+      const form = document.querySelector("form");
+      const radioButtons = document.querySelectorAll("input[name='sizeOption']");
+      const colorPicks = document.querySelectorAll("input.colorpicker[type='color']");
+      const colorTexts = document.querySelectorAll("input.colortext[type='text']");
+      const scaleFactor = document.querySelector("input[type='number']#factor");
+      const textarea = document.getElementById("makecodeArcadeOutput");
+      const statusDiv = document.querySelector("#status");
+      const inputWidth = document.querySelector("input#width");
+      const inputHeight = document.querySelector("input#height");
+      const inputRatio = document.querySelector("input#ratio");
+      const modeRadios = document.querySelectorAll("input[name='processingMode']");
+
+      // --- Math & Color Utilities ---
+      function isValidHex(hex) { return /^#([0-9A-Fa-f]{6})$/.test(hex); }
+      function hexToRgb(hex) { return { r: parseInt(hex[1] + hex[2], 16), g: parseInt(hex[3] + hex[4], 16), b: parseInt(hex[5] + hex[6], 16) }; }
+      function rgbToHex(r, g, b) { const toHex = (c) => c.toString(16).padStart(2, "0"); return `#${toHex(r)}${toHex(g)}${toHex(b)}`; }
+      function colorDistanceSq(color1, color2) { const dr = color1.r - color2.r, dg = color1.g - color2.g, db = color1.b - color2.b; return dr * dr + dg * dg + db * db; }
+      function getPixelColor(imageData, x, y) { const index = (y * imageData.width + x) * 4; return { r: imageData.data[index], g: imageData.data[index + 1], b: imageData.data[index + 2], a: imageData.data[index + 3] }; }
+      function setPixelColor(imageData, x, y, r, g, b, a = 255) { const index = (y * imageData.width + x) * 4; imageData.data[index] = r; imageData.data[index + 1] = g; imageData.data[index + 2] = b; imageData.data[index + 3] = a; }
+      function getNearestColorFast(targetColor, paletteColors) { let minSqDist = Infinity; let nearest = paletteColors[0]; for (let i = 0; i < paletteColors.length; i++) { const dist = colorDistanceSq(targetColor, paletteColors[i].color); if (dist < minSqDist) { minSqDist = dist; nearest = paletteColors[i]; } } return nearest; }
+
+      // --- UI Controllers ---
+      function syncColorToText(colorInput) { const textInput = document.querySelector(`input.colortext[id='${colorInput.id}']`); if (textInput) textInput.value = colorInput.value; }
+      function syncTextToColor(textInput) { const colorInput = document.querySelector(`input.colorpicker[id='${textInput.id}']`); if (colorInput) { if (isValidHex(textInput.value)) colorInput.value = textInput.value; else textInput.value = colorInput.value; } }
+      colorPicks.forEach((input) => input.addEventListener("input", () => syncColorToText(input)));
+      colorTexts.forEach((input) => input.addEventListener("change", () => syncTextToColor(input)));
+
+      // --- Event Handlers ---
+      runButton.addEventListener("click", running);
+      fileInput.addEventListener("change", whenImageIsUploaded);
+
+      radioButtons.forEach((radioButton) => {
+        radioButton.addEventListener("change", function () {
+          inputWidth.removeAttribute("disabled"); inputHeight.removeAttribute("disabled"); runButton.removeAttribute("disabled"); inputRatio.removeAttribute("disabled");
+          let sizeMode = this.id;
+          if (sizeMode === "custom") {
+            const img = document.querySelector("img");
+            if (img) { inputWidth.value = img.width; inputHeight.value = img.height; } else { inputWidth.value = canvas.width; inputHeight.value = canvas.height; }
+          } else { inputRatio.setAttribute("disabled", "true"); }
+          customSizes.forEach((field) => (field.disabled = sizeMode !== "custom"));
+          scaleFactor.disabled = sizeMode !== "scale";
+          if (sizeMode === "scale" && scaleFactor.value === "") scaleFactor.value = 0.1;
+          const img = document.querySelector("img"); if (img) updateImageDimensions(img, sizeMode);
+        });
+      });
+
+      modeRadios.forEach((radio) => radio.addEventListener("change", function () { currentMode = this.value; }));
+
+      const palInput = document.getElementById("myPal");
+      palInput.addEventListener("change", function (e) {
+        const file = palInput.files[0];
+        if (!file) {
+          const arcadeColors = [ "#ffffff", "#ff2121", "#ff93c4", "#ff8135", "#fff609", "#249ca3", "#78dc52", "#003fad", "#87f2ff", "#8e2ec4", "#a4839f", "#5c406c", "#e5cdc4", "#91463d", "#000000" ];
+          document.querySelectorAll("input.colorpicker").forEach((input, index) => { input.value = arcadeColors[index]; syncColorToText(input); });
+          return;
         }
-    });
-});
+        const reader = new FileReader(); reader.onload = function (e) { readPalText(reader.result); }; reader.readAsText(file);
+      });
 
-modeRadios.forEach(radio => {
-    radio.addEventListener("change", function() {
-        currentMode = this.value;
-        // If an image is loaded, update preview/parameters area
-        const img = document.querySelector("img");
-        if (img) {
-             // No conversion here, just UI update. Conversion on run button.
-        }
-    });
-});
-
-dotMatrixTypeRadios.forEach(radio => {
-    radio.addEventListener("change", function() {
-        currentDotMatrixType = this.value;
-        const img = document.querySelector("img");
-        if (img) {
-            // No conversion here, just UI update. Conversion on run button.
-        }
-    });
-});
-
-const palInput = document.getElementById('myPal')
-
-palInput.addEventListener('change', function(e) {
-    const file = palInput.files[0]
-    if (!file) {
-        const arcadeColors = [
-            "#ffffff","#ff2121","#ff93c4",
-            "#ff8135","#fff609","#249ca3",
-            "#78dc52","#003fad","#87f2ff",
-            "#8e2ec4","#a4839f","#5c406c",
-            "#e5cdc4","#91463d","#000000",
-        ]
-        document.querySelectorAll("input.colorpicker").forEach((input, index) => {
-            input.value = arcadeColors[index]
-            syncColorToText(input)
-        })
-        return;
-    }
-    
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const palText = reader.result;
-        // Assuming the palette text is in the format #RRGGBB per line
-        readPalText(palText);
-    };
-    reader.readAsText(file); // Read as text for palette files
-});
-
-function readPalText(palText) {
-    const lines = palText.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (i < 15) { // Assuming 16 colors max
-            let color = line.toString();
-            if (color.charAt(0) !== "#") color = "#" + color; // Add # if missing
-            
+      function readPalText(palText) {
+        const lines = palText.split("\n");
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (i < 15) {
+            let color = line.toString(); if (color.charAt(0) !== "#") color = "#" + color;
             const colorInput = document.querySelector(`input.colorpicker[id='col${i + 1}']`);
-            if (colorInput && isValidHex(color)) {
-                colorInput.value = color;
-                syncColorToText(colorInput); // Sync text input as well
-            }
-        } else {
-            return; // Stop after 16 colors
+            if (colorInput && isValidHex(color)) { colorInput.value = color; syncColorToText(colorInput); }
+          } else break;
         }
-    };
-}
+      }
+      form.addEventListener("submit", (e) => e.preventDefault());
 
+      // --- Stable Binary Engine for Image Loading ---
+      function whenImageIsUploaded() {
+        runButton.setAttribute("disabled", "true");
+        copyButton.setAttribute("disabled", "true");
+        statusDiv.textContent = "Loading file pipeline...";
+        textarea.value = ""; 
+        gifData = null;
 
-// Prevent form submission from refreshing
-form.addEventListener("submit", function convertImage(event) {
-    event.preventDefault(); // Prevent form submission
+        const file = fileInput.files[0];
+        if (!file) return;
 
-});
-
-function updateShowImage() {
-    const img = document.querySelector("img");
-    const showImg = document.querySelector("img.show");
-    const canvas = document.querySelector("canvas");
-    if (img && showImg && canvas) {
-        showImg.src = img.src;
-        showImg.width = canvas.width;
-        showImg.height = canvas.height;
-        showImg.style.width = canvas.width + "px";
-        showImg.style.height = canvas.height + "px";
-    }
-}
-
-// --- Image Loading and GIF Parsing ---
-async function whenImageIsUploaded() {
-    runButton.setAttribute("disabled", "true");
-    copyButton.setAttribute("disabled", "true");
-    statusDiv.textContent = "Loading file...";
-    gifData = null; // Reset GIF data
-
-    const file = this.files[0];
-    if (!file) {
-        imgSizeTotal = {width: NaN, height: NaN}; // Reset image size
-        sizeTotal = {width: NaN, height: NaN}; // Reset total size
-        return;
-    }
-
-    const reader = new FileReader();
-
-    reader.onload = async function(e) {
-        const img = document.createElement("img");
         const node = document.querySelector("img");
-        if (node !== null) node.parentNode.removeChild(node);
-        document.querySelector("body").appendChild(img);
-        document.querySelector("div.output").appendChild(document.createElement("img.show")); // Create a new img.show element
+        if (node) node.parentNode.removeChild(node);
+
+        const img = document.createElement("img");
+        document.querySelector("div.output").appendChild(img);
+
         img.onload = () => {
-            originalImageSize.width = img.width;
-            originalImageSize.height = img.height;
-
-            // Set initial size mode (e.g., full-width) and update dimensions
-            const initialSizeMode = document.querySelector("input[name='sizeOption']:checked").id;
-            updateImageDimensions(img, initialSizeMode);
-
-            statusDiv.textContent = `Image loaded: ${originalImageSize.width}x${originalImageSize.height}`;
-            runButton.removeAttribute("disabled");
-            // Initial preview might be done here if needed, or wait for run.
-            // Let's do an initial conversion with default settings for preview
-            running(); // Auto-run on load
-
+          if (originalImageSize.width !== img.naturalWidth || originalImageSize.height !== img.naturalHeight) {
+              originalImageSize.width = img.naturalWidth;
+              originalImageSize.height = img.naturalHeight;
+          }
+          const initialSizeMode = document.querySelector("input[name='sizeOption']:checked").id;
+          updateImageDimensions(img, initialSizeMode);
+          statusDiv.textContent = `Image pipeline attached: ${originalImageSize.width}x${originalImageSize.height}`;
+          runButton.removeAttribute("disabled");
+          running();
         };
 
-        if (file.type === "image/gif") {
-            statusDiv.textContent = "Loading GIF (using omggif)...";
+        if (file.type === "image/gif" || file.name.toLowerCase().endsWith('.gif')) {
+          statusDiv.textContent = `Parsing GIF byte stream [Size: ${file.size} bytes]...`;
+          if (file.size === 0) {
+            throw new Error("Cannot decode GIF buffer: Target file has 0 bytes (Android Content URI restriction).");
+          }
+
+          const binaryReader = new FileReader();
+          binaryReader.onerror = (err) => {
+            throw new Error(`File API Error: Failed to fetch binary buffer stream from local storage.`);
+          };
+
+          binaryReader.onload = (ev) => {
             try {
-                const arrayBuffer = await file.arrayBuffer();
-                const uint8Array = new Uint8Array(arrayBuffer); // Convert ArrayBuffer to Uint8Array for omggif
+              const arrayBuffer = ev.target.result;
+              const gr = gifHandler.createReader(arrayBuffer);
+              const frames = gifHandler.getFrames(gr);
 
-                // Initialize GifReader from omggif
-                const gr = new omggif.GifReader(uint8Array);
+              gifData = {
+                width: gr.width, height: gr.height, frames: frames,
+                globalPalette: gr.globalPalette(), lsd: { width: gr.width, height: gr.height },
+                readerInstance: gr
+              };
+              
+              gifMinDelay = Infinity;
+              frames.forEach(f => { gifMinDelay = Math.min(gifMinDelay, f.delay); });
+              if (gifMinDelay === Infinity) gifMinDelay = 100;
 
-                // Store GIF properties and frames
-                gifData = {
-                    width: gr.width, // GIF logical screen width
-                    height: gr.height, // GIF logical screen height
-                    frames: [],
-                    globalPalette: gr.gct, // Global Color Table
-                    lsd: { // Mimic gifuct-js lsd structure for compatibility if needed later
-                        width: gr.width,
-                        height: gr.height,
-                        // Add other LSD properties if needed, e.g., bgIndex, pixelAspectRatio
-                    }
-                };
+              if (gifData.frames.length > 0) {
+                statusDiv.textContent = `GIF parsed successfully: ${gifData.width}x${gifData.height} with ${gifData.frames.length} frames`;
+                canvas.width = gifData.width;
+                canvas.height = gifData.height;
+                
+                const dummyCanvas = document.createElement("canvas");
+                dummyCanvas.width = gr.width; dummyCanvas.height = gr.height;
+                const dummyCtx = dummyCanvas.getContext("2d");
+                const firstFrameImageData = gifHandler.getFrameImageData(gr, 0, dummyCtx);
+                ctx.putImageData(firstFrameImageData, 0, 0);
 
-                gifMinDelay = Infinity; // Reset min delay
-
-                for (let i = 0; i < gr.numFrames(); i++) { // Iterate through frames
-                    const frameInfo = gr.frameInfo(i); // Get frame details
-                    gifData.frames.push({
-                        dims: {
-                            left: frameInfo.x,
-                            top: frameInfo.y,
-                            width: frameInfo.width,
-                            height: frameInfo.height
-                        },
-                        delay: frameInfo.delay * 10, // omggif delay is in 1/100ths of a second, convert to ms
-                        disposal: frameInfo.disposal, // Disposal method
-                        // pixelData will be generated on demand
-                    });
-                    gifMinDelay = Math.min(gifMinDelay, frameInfo.delay * 10); // Update min delay
-                }
-
-                if (gifMinDelay === Infinity) gifMinDelay = 0; // Handle case with no delay info
-
-                if (gifData.frames.length > 0) {
-                    statusDiv.textContent = `GIF loaded: <span class="math-inline">\{gifData\.width\}x</span>{gifData.height}, ${gifData.frames.length} frames, min delay: ${gifMinDelay}ms`;
-
-                    // For initial display, we need to draw the first frame
-                    // We'll use a temporary canvas to get ImageData for the first frame
-                    canvas.width = gifData.width; // Set canvas size to GIF's logical screen size
-                    canvas.height = gifData.height;
-                    const firstFrameImageData = new ImageData(gifData.width, gifData.height);
-                    gr.decodeAndBlitFrame(0, firstFrameImageData.data); // Decode and blit the first frame
-                    ctx.putImageData(firstFrameImageData, 0, 0); // Draw to preview canvas
-
-                    img.src = canvas.toDataURL(); // Display first frame on the img element
-                    img.onload = () => { // Ensure img element is loaded
-                        originalImageSize.width = img.width;
-                        originalImageSize.height = img.height;
-
-                        // Set initial size mode and update dimensions for the img element
-                        const initialSizeMode = document.querySelector("input[name='sizeOption']:checked").id;
-                        updateImageDimensions(img, initialSizeMode);
-                        updateShowImage(); // Update the output image display
-
-                        runButton.removeAttribute("disabled");
-                        downloadButton.removeAttribute("disabled");
-                        running(); // Auto-run on load
-                    };
-
-                } else {
-                    statusDiv.textContent = "Error: GIF has no frames.";
-                    runButton.setAttribute("disabled", "true");
-                }
-            } catch (error) {
-                console.error("Error parsing GIF with omggif:", error);
-                statusDiv.textContent = "Error parsing GIF. Invalid file?";
-                runButton.setAttribute("disabled", "true");
-                downloadButton.setAttribute("disabled", "true");
-                gifData = null; // Clear invalid data
+                img.src = canvas.toDataURL();
+              } else {
+                throw new Error("Target GIF file contains zero renderable frames.");
+              }
+            } catch (pipelineError) {
+              statusDiv.textContent = "Pipeline Critical Exception: Failed to decode binary structure.";
+              textarea.value = `[System Error Log]\nCannot decode GIF buffer: ${pipelineError.message}\n\nTechnical Stack Trace:\n${pipelineError.stack || ''}`;
+              runButton.setAttribute("disabled", "true");
+              downloadButton.setAttribute("disabled", "true");
+              gifData = null;
             }
-
+          };
+          binaryReader.readAsArrayBuffer(file);
         } else {
-            // For non-GIFs, just set the src
-            img.src = e.target.result;
-            img.onload = () => {
-                originalImageSize.width = img.width;
-                originalImageSize.height = img.height;
-
-                // Set initial size mode (e.g., full-width) and update dimensions
-                const initialSizeMode = document.querySelector("input[name='sizeOption']:checked").id;
-                updateImageDimensions(img, initialSizeMode);
-                updateShowImage(); // Update the output image display
-
-                statusDiv.textContent = `Image loaded: <span class="math-inline">\{originalImageSize\.width\}x</span>{originalImageSize.height}`;
-                runButton.removeAttribute("disabled");
-                running(); // Auto-run on load
-            };
+          const localReader = new FileReader();
+          localReader.onload = (ev) => { img.src = ev.target.result; };
+          localReader.readAsDataURL(file);
         }
-    };
+      }
 
-    reader.readAsDataURL(file); // Read as Data URL for static images
-}
+      // --- Processing Core & Dithering Calculations ---
+      async function convert(imgElement, frameImageData = null, frameIndex = 0) {
+        copyButton.innerText = "Copy code";
+        imgrender = [];
+        let sourceImageData, originalWidth, originalHeight;
 
-// Function to process raw frame data from gifuct-js into ImageData
-async function getGifFrameImageData(gr, frameIndex) {
-    const width = gr.width;
-    const height = gr.height;
-    const imageData = new ImageData(width, height);
-    gr.decodeAndBlitFrame(frameIndex, imageData.data);
-    return imageData;
-}
+        if (frameImageData) {
+          sourceImageData = frameImageData;
+          originalWidth = sourceImageData.width;
+          originalHeight = sourceImageData.height;
+        } else {
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = imgElement.naturalWidth;
+          tempCanvas.height = imgElement.naturalHeight;
+          const tempCtx = tempCanvas.getContext("2d", { willReadFrequently: true });
+          tempCtx.drawImage(imgElement, 0, 0, tempCanvas.width, tempCanvas.height);
+          sourceImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+          originalWidth = imgElement.naturalWidth;
+          originalHeight = imgElement.naturalHeight;
+        }
 
-function rgb(r,g,b) {
-    return ((r * 65536) + (g * 256) + b)
-}
+        let targetWidth = imgElement.width;
+        let targetHeight = imgElement.height;
+        sizeTotal.width = targetWidth; sizeTotal.height = targetHeight;
+        imgSizeTotal.width = originalWidth; imgSizeTotal.height = originalHeight;
 
-// --- Image Processing Function ---
-async function convert(imgElement, frameImageData = null, frameIndex = 0) {
-    copyButton.innerText = "Copy code"; // Reset text
+        canvas.width = targetWidth; canvas.height = targetHeight;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    imgrender = []
-    let sourceImageData;
-    let originalWidth, originalHeight;
+        const arcadeColors = [
+          "#00000000", document.getElementById("col1").value, document.getElementById("col2").value, document.getElementById("col3").value, document.getElementById("col4").value, document.getElementById("col5").value, document.getElementById("col6").value, document.getElementById("col7").value, document.getElementById("col8").value, document.getElementById("col9").value, document.getElementById("col10").value, document.getElementById("col11").value, document.getElementById("col12").value, document.getElementById("col13").value, document.getElementById("col14").value, document.getElementById("col15").value,
+        ].map((color, index) => ({ color: hexToRgb(color), index: index.toString(16) }));
 
-    if (frameImageData) {
-        sourceImageData = frameImageData;
-        originalWidth = sourceImageData.width;
-        originalHeight = sourceImageData.height;
-    } else {
-        // For static images, draw to temp canvas to get ImageData
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = imgElement.naturalWidth;
-        tempCanvas.height = imgElement.naturalHeight;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.drawImage(imgElement, 0, 0, tempCanvas.width, tempCanvas.height);
-        sourceImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-        originalWidth = imgElement.naturalWidth;
-        originalHeight = imgElement.naturalHeight;
-    }
+        const outputImageData = ctx.createImageData(targetWidth, targetHeight);
+        const xScale = originalWidth / targetWidth; const yScale = originalHeight / targetHeight;
+        const pixelColorMap = new Map();
 
-    let targetWidth = imgElement.width; // Use the adjusted display size
-    let targetHeight = imgElement.height;
-
-    let outputCanvasWidth = targetWidth;
-    let outputCanvasHeight = targetHeight;
-
-    // get resulting size based on canvas size
-    sizeTotal.width = targetWidth;
-    sizeTotal.height = targetHeight;
-    
-    // get resulting size based on image size
-    if (isNaN(imgSizeTotal.width)) imgSizeTotal.width = imgElement.naturalWidth;
-    if (isNaN(imgSizeTotal.height)) imgSizeTotal.height = imgElement.naturalHeight;
-
-    // Set canvas size for the output preview
-    canvas.width = imgElement.width;
-    canvas.height = imgElement.height;
-    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
-
-    // Get the palette or dot matrix colors
-    const arcadeColors = [
-        "#00000000", // Transparent - Index 0
-        document.getElementById('col1').value,
-        document.getElementById('col2').value,
-        document.getElementById('col3').value,
-        document.getElementById('col4').value,
-        document.getElementById('col5').value,
-        document.getElementById('col6').value,
-        document.getElementById('col7').value,
-        document.getElementById('col8').value,
-        document.getElementById('col9').value,
-        document.getElementById('col10').value,
-        document.getElementById('col11').value,
-        document.getElementById('col12').value,
-        document.getElementById('col13').value,
-        document.getElementById('col14').value,
-        document.getElementById('col15').value,
-    ].map(function convertFromHexToRGB(color, index) {
-        const rgb = hexToRgb(color);
-        return {
-            color: rgb,
-            index: (index).toString(16)
-        };
-    });
-
-    let pixelIndex = 0;
-    const outputImageData = ctx.createImageData(outputCanvasWidth, outputCanvasHeight);
-    // Calculate mapping from target dimensions (based on size options) back to original image dimensions
-    const xScale = originalWidth / targetWidth;
-    const yScale = originalHeight / targetHeight;
-    if (currentMode === "dotMatrix") {
-        // Dot matrix mode requires a buffer for dithering
-        window.ditherBuffer = [];
-        for (let by = 0; by < outputCanvasHeight; by++) {
+        if (currentMode === "errorDefusion") {
+          window.ditherBuffer = [];
+          for (let by = 0; by < targetHeight; by++) {
             window.ditherBuffer[by] = [];
-            for (let bx = 0; bx < outputCanvasWidth; bx++) {
-                // copy original pixel
-                const orig = getPixelColor(sourceImageData, 
-                    Math.max(0, Math.min(Math.floor(bx * xScale), sourceImageData.width - 1)),
-                    Math.max(0, Math.min(Math.floor(by * yScale), sourceImageData.height - 1))
-                );
-                window.ditherBuffer[by][bx] = { ...orig };
+            for (let bx = 0; bx < targetWidth; bx++) {
+              const orig = getPixelColor(sourceImageData, Math.max(0, Math.min(Math.floor(bx * xScale), sourceImageData.width - 1)), Math.max(0, Math.min(Math.floor(by * yScale), sourceImageData.height - 1)));
+              window.ditherBuffer[by][bx] = { ...orig };
             }
+          }
         }
-    }
 
+        const bayerMatrix4x4 = [ [0 / 16, 8 / 16, 2 / 16, 10 / 16], [12 / 16, 4 / 16, 14 / 16, 6 / 16], [3 / 16, 11 / 16, 1 / 16, 9 / 16], [15 / 16, 7 / 16, 13 / 16, 5 / 16] ];
 
-    for (let y = 0; y < targetHeight; y++) {
-        for (let x = 0; x < targetWidth; x++) {
-
-            // Get the color from the original image corresponding to this (x, y) in the *scaled* view
-            // Average nearby pixels in the original if scaling down, or just pick nearest
-            // Simple approach: pick the pixel from the original image corresponding to the top-left corner of the scaled pixel
-            const originalX = Math.floor(x * xScale);
-            const originalY = Math.floor(y * yScale);
-
-             // Ensure coordinates are within bounds of sourceImageData
-            const clampedOriginalX = Math.max(0, Math.min(originalX, sourceImageData.width - 1));
-            const clampedOriginalY = Math.max(0, Math.min(originalY, sourceImageData.height - 1));
-
-
+        for (let y = 0; y < targetHeight; y++) {
+          for (let x = 0; x < targetWidth; x++) {
+            const clampedOriginalX = Math.max(0, Math.min(Math.floor(x * xScale), sourceImageData.width - 1));
+            const clampedOriginalY = Math.max(0, Math.min(Math.floor(y * yScale), sourceImageData.height - 1));
             const originalPixelColor = getPixelColor(sourceImageData, clampedOriginalX, clampedOriginalY);
 
-            // Handle transparency from the source image
-            if (originalPixelColor.a === 0) {
-                if (currentMode === "solid") {
-                    // For solid mode, transparent original pixel maps to transparent palette color (index 0)
-                    // Draw transparent on the preview canvas
-                    // No need to set pixel data in outputImageData for transparent areas unless required by MakeCode format
-                    // For MakeCode string, this will be '0'
-                    
-                } else if (currentMode === "dotMatrix") {
-                    // Decide how transparent original pixels behave in dot matrix
-                    // Option 1: Make the entire block transparent (simplest)
-                    // Option 2: Use the background dot color (less common)
-                    // Let's make the block transparent
+            if (originalPixelColor.a !== 0) {
+              if (currentMode === "solid") {
+                const colorKey = `${originalPixelColor.r},${originalPixelColor.g},${originalPixelColor.b}`;
+                let nearest = pixelColorMap.has(colorKey) ? pixelColorMap.get(colorKey) : getNearestColorFast(originalPixelColor, arcadeColors);
+                pixelColorMap.set(colorKey, nearest);
+                ctx.fillStyle = `rgb(${nearest.color.r}, ${nearest.color.g}, ${nearest.color.b})`; ctx.fillRect(x, y, 1, 1);
+                setPixelColor(outputImageData, x, y, nearest.color.r, nearest.color.g, nearest.color.b, 255);
+              } else if (currentMode === "errorDefusion") {
+                const bufColor = window.ditherBuffer[y][x];
+                const nearest = getNearestColorFast(bufColor, arcadeColors);
+                ctx.fillStyle = `rgb(${nearest.color.r}, ${nearest.color.g}, ${nearest.color.b})`; ctx.fillRect(x, y, 1, 1);
+                setPixelColor(outputImageData, x, y, nearest.color.r, nearest.color.g, nearest.color.b, 255);
+                const err = { r: bufColor.r - nearest.color.r, g: bufColor.g - nearest.color.g, b: bufColor.b - nearest.color.b };
+                function distributeError(dx, dy, factor) {
+                  const nx = x + dx; const ny = y + dy;
+                  if (nx >= 0 && nx < targetWidth && ny >= 0 && ny < targetHeight) {
+                    const nbuf = window.ditherBuffer[ny][nx];
+                    nbuf.r = Math.max(0, Math.min(255, nbuf.r + err.r * factor)); nbuf.g = Math.max(0, Math.min(255, nbuf.g + err.g * factor)); nbuf.b = Math.max(0, Math.min(255, nbuf.b + err.b * factor));
+                  }
                 }
-
-                if (currentMode === "solid") {
-                    // Draw transparent pixel in the preview canvas
-                    // ctx.clearRect(x, y, 1, 1); // Or set alpha in outputImageData
-                    // The MakeCode string character for transparent is usually '0'
-                } else if (currentMode === "dotMatrix") {
-                     // Draw transparent block in the preview canvas
-                     // ctx.clearRect(x * dotBlockSize, y * dotBlockSize, dotBlockSize, dotBlockSize);
-                     // For MakeCode string, a block of '0's
-                }
-
-
-            } else {
-                // --- Process based on Mode ---
-                if (currentMode === "solid") {
-                    // --- Solid Color Mode (Existing Logic) ---
-                    const nearest = arcadeColors.sort((prev, curr) => {
-                        const distPrev = colorDistance(originalPixelColor, prev.color);
-                        const distCurr = colorDistance(originalPixelColor, curr.color);
-                        return distPrev - distCurr;
-                    })[0];
-
-                    // Draw preview pixel
-                    ctx.fillStyle = `rgb(${nearest.color.r}, ${nearest.color.g}, ${nearest.color.b})`;
-                    ctx.fillRect(x, y, 1, 1);
-
-                    // Set pixel data in outputImageData for MakeCode string generation
-                    const outputRgb = nearest.color;
-                    setPixelColor(outputImageData, x, y, outputRgb.r, outputRgb.g, outputRgb.b, 255);
-
-
-                } else if (currentMode === "dotMatrix") {
-                    // Floyd–Steinberg dithering (16-color palette)
-                    // เตรียม buffer สำหรับ dithering
-
-                    // ใช้ค่าจาก buffer แทน originalPixelColor
-                    const bufColor = window.ditherBuffer[y][x];
-                    // หา nearest palette color
-                    const nearest = arcadeColors
-                        .map(c => ({
-                            ...c,
-                            dist: colorDistance(bufColor, c.color)
-                        }))
-                        .sort((a, b) => a.dist - b.dist)[0];
-
-                    // วาด pixel preview
-                    ctx.fillStyle = `rgb(${nearest.color.r}, ${nearest.color.g}, ${nearest.color.b})`;
-                    ctx.fillRect(x, y, 1, 1);
-
-                    // Set pixel data ใน outputImageData
-                    setPixelColor(outputImageData, x, y, nearest.color.r, nearest.color.g, nearest.color.b, 255);
-
-                    // คำนวณ error
-                    const err = {
-                        r: bufColor.r - nearest.color.r,
-                        g: bufColor.g - nearest.color.g,
-                        b: bufColor.b - nearest.color.b
-                    };
-
-                    // กระจาย error ไปยัง pixel ข้างเคียงใน buffer (Floyd–Steinberg)
-                    function distributeError(dx, dy, factor) {
-                        const nx = x + dx;
-                        const ny = y + dy;
-                        if (nx >= 0 && nx < outputCanvasWidth && ny >= 0 && ny < outputCanvasHeight) {
-                            const nbuf = window.ditherBuffer[ny][nx];
-                            nbuf.r = Math.max(0, Math.min(255, nbuf.r + err.r * factor));
-                            nbuf.g = Math.max(0, Math.min(255, nbuf.g + err.g * factor));
-                            nbuf.b = Math.max(0, Math.min(255, nbuf.b + err.b * factor));
-                        }
-                    }
-                    distributeError(1, 0, 7 / 16);
-                    distributeError(-1, 1, 3 / 16);
-                    distributeError(0, 1, 5 / 16);
-                    distributeError(1, 1, 1 / 16);
-
-                }
+                distributeError(1, 0, 7 / 16); distributeError(-1, 1, 3 / 16); distributeError(0, 1, 5 / 16); distributeError(1, 1, 1 / 16);
+              } else if (currentMode === "bayerMatrix") {
+                const threshold = bayerMatrix4x4[y % 4][x % 4] - 0.5; const spread = 64;
+                const ditheredColor = { r: Math.max(0, Math.min(255, originalPixelColor.r + threshold * spread)), g: Math.max(0, Math.min(255, originalPixelColor.g + threshold * spread)), b: Math.max(0, Math.min(255, originalPixelColor.b + threshold * spread)) };
+                const colorKey = `bayer_${Math.floor(ditheredColor.r)},${Math.floor(ditheredColor.g)},${Math.floor(ditheredColor.b)}`;
+                let nearest = pixelColorMap.has(colorKey) ? pixelColorMap.get(colorKey) : getNearestColorFast(ditheredColor, arcadeColors);
+                pixelColorMap.set(colorKey, nearest);
+                ctx.fillStyle = `rgb(${nearest.color.r}, ${nearest.color.g}, ${nearest.color.b})`; ctx.fillRect(x, y, 1, 1);
+                setPixelColor(outputImageData, x, y, nearest.color.r, nearest.color.g, nearest.color.b, 255);
+              }
             }
-            if (currentMode === "solid") {
-                pixelIndex++; // Increment for solid mode (1:1 pixel mapping)
-            } else if (currentMode === "dotMatrix" && currentDotMatrixType === "solidApprox") {
-                pixelIndex++; // Increment for solid approximation (1:1 pixel mapping on output canvas)
-            } else if (currentMode === "dotMatrix" && currentDotMatrixType === "pattern") {
-                // Pixel index logic is different for patterns as we fill blocks
-                // We can just iterate through the outputImageData array later for MakeCode string
-            }
+          }
         }
-    }
 
-    // --- Generate MakeCode String ---
-    let makeCodeString = "";
-    const paletteLookup = arcadeColors.reduce((map, color) => {
-        // Use the *exact* RGB value drawn on the canvas for lookup
-        const hex = rgbToHex(color.color.r, color.color.g, color.color.b);
-        map[hex] = color.index;
-        return map;
-    }, {});
-    // Add transparent color mapping explicitly
-    paletteLookup[rgbToHex(0,0,0)] = '0'; // Assuming 000000 is transparent if alpha is 0 (or use the explicit transparent color input)
-    const transparentColor = hexToRgb("#00000000"); // Get explicit transparent color if used in palette
-    paletteLookup[rgbToHex(transparentColor.r, transparentColor.g, transparentColor.b)] = '0';
+        let makeCodeString = "";
+        const paletteLookup = arcadeColors.reduce((map, color) => { map[rgbToHex(color.color.r, color.color.g, color.color.b)] = color.index; return map; }, {});
+        paletteLookup[rgbToHex(0, 0, 0)] = "0";
 
-
-    // Loop through the generated outputImageData (which is on the canvas)
-    for (let y = 0; y < outputCanvasHeight; y++) {
-        let rowString = "";
-        for (let x = 0; x < outputCanvasWidth; x++) {
+        for (let y = 0; y < targetHeight; y++) {
+          let rowString = "";
+          for (let x = 0; x < targetWidth; x++) {
             const pixelColor = getPixelColor(outputImageData, x, y);
             const pixelHex = rgbToHex(pixelColor.r, pixelColor.g, pixelColor.b);
-
-            let colorIndex = '0'; // Default to transparent
-
-            if (pixelColor.a > 0) { // Only look up if not transparent
-                // In solid mode, find the closest of the 16 colors again (or map the exact color drawn)
-                // Mapping the exact color drawn is more reliable if it came from the palette/interpolation
-                if (paletteLookup[pixelHex] !== undefined) {
-                    colorIndex = paletteLookup[pixelHex];
-                } else {
-                    // If the exact color isn't in the paletteLookup (e.g., interpolated solidApprox), find the closest
-                    // This shouldn't happen for solid mode which picks from the palette
-                    // For solidApprox, we draw interpolated colors. We need to map these back to the 16 palette colors OR generate a string that handles more colors?
-                    // MakeCode sprite format is usually 16 colors. We need to map the interpolated color back to the closest of the *16 arcadeColors*.
-
-                    // This case should ideally be covered by paletteLookup
-                    const nearest = arcadeColors.sort((prev, curr) => {
-                        const distPrev = colorDistance(pixelColor, prev.color);
-                        const distCurr = colorDistance(pixelColor, curr.color);
-                        return distPrev - distCurr;
-                    })[0];
-                    colorIndex = nearest.index;
-                }
+            let colorIndex = "0";
+            if (pixelColor.a > 0) {
+              colorIndex = (paletteLookup[pixelHex] !== undefined) ? paletteLookup[pixelHex] : getNearestColorFast(pixelColor, arcadeColors).index;
             }
-            colorIndex = (colorIndex.toLowerCase() === "0") ? "f" : colorIndex.toLowerCase();
+            colorIndex = colorIndex.toLowerCase() === "0" ? "f" : colorIndex.toLowerCase();
             rowString += colorIndex;
+          }
+          makeCodeString += rowString + "\n";
         }
-        makeCodeString += rowString + "\n";
-    }
+        return { spriteCode: `img\`\n${makeCodeString}\`` };
+      }
 
-    let spriteCode = `img\`\n${makeCodeString}\``;
+      // --- Main Trigger Execution ---
+      async function running() {
+        runButton.setAttribute("disabled", "true"); copyButton.setAttribute("disabled", "true");
+        textarea.value = ""; statusDiv.textContent = "Executing image rendering pipelines...";
 
-     // For GIF, return the frame data/string, don't set the textarea directly
-    if (gifData) {
-        // Return frame string and delay
-        return { spriteCode: spriteCode, delay: gifData.frames[frameIndex].delay || gifMinDelay };
-    } else {
-        let dateString = new Date()
-		.toISOString()
-		.replaceAll("-", "")
-		.replaceAll(":", "")
-		.replaceAll(".", "")
-
-        canvasName = `canvas${dateString}`; // Update canvas name for static image
-        // For static image, set textarea and enable copy
-        textarea.textContent = `let mySprite${dateString} = sprites.create(${spriteCode}, SpriteKind.Player);\n`;
-        copyButton.removeAttribute("disabled");
-        downloadButton.removeAttribute("disabled");
-        return { spriteCode: spriteCode }; // Return for consistency
-    }
-}
-
-// ปรับปรุงฟังก์ชัน running ให้ใช้ gifHandler และจัดการ error
-async function running() {
-    runButton.setAttribute("disabled", "true");
-    copyButton.setAttribute("disabled", "true");
-    textarea.textContent = ""; // Clear previous output
-    statusDiv.textContent = "Converting...";
-
-    const img = document.querySelector("img");
-    if (!img || (!gifData && (!img.complete || img.naturalWidth === 0))) {
-        statusDiv.textContent = "No image loaded.";
-        return;
-    }
-
-    // Ensure image dimensions are set according to size options before processing
-    const currentSizeMode = document.querySelector("input[name='sizeOption']:checked").id;
-    updateImageDimensions(img, currentSizeMode);
-
-    if (gifData && gifData.frames.length > 0) {
-        statusDiv.textContent = `Converting GIF with ${gifData.frames.length} frames...`;
-        const frameResults = [];
-        let processingErrors = false;
-
-        try {
-            // Re-read file to get GifReader instance for frame decoding
-            const file = document.querySelector("input#myFile").files[0];
-            const arrayBuffer = await file.arrayBuffer();
-            const gr = gifHandler.createReader(arrayBuffer);
-            const frames = gifHandler.getFrames(gr);
-
-            // Create an offscreen canvas for frame compositing
-            const offscreenCanvas = document.createElement('canvas');
-            offscreenCanvas.width = gifData.width;
-            offscreenCanvas.height = gifData.height;
-            const offscreenCtx = offscreenCanvas.getContext('2d');
-
-            for (let i = 0; i < gifData.frames.length; i++) {
-                try {
-                    statusDiv.textContent = `Converting frame ${i + 1}/${gifData.frames.length}...`;
-
-                    // ใช้ gifHandler ในการแปลงเฟรม
-                    const currentFrameImageData = gifHandler.getFrameImageData(gr, i);
-
-                    offscreenCtx.putImageData(currentFrameImageData, 0, 0);
-                    const fullFrameImageData = offscreenCtx.getImageData(0, 0, offscreenCanvas.width, offscreenCanvas.height);
-
-                    const result = await convert(img, fullFrameImageData, i);
-                    frameResults.push({ spriteCode: result.spriteCode, delay: frames[i].delay });
-                } catch (frameErr) {
-                    console.error(frameErr);
-                    statusDiv.textContent = `Error processing GIF frame ${i + 1}: ${frameErr.message}`;
-                    processingErrors = true;
-                    break;
-                }
-            }
-        } catch (err) {
-            console.error(err);
-            statusDiv.textContent = `GIF processing error: ${err.message}`;
-            runButton.removeAttribute("disabled");
-            return;
+        const img = document.querySelector("img");
+        if (!img || (!gifData && (!img.complete || img.naturalWidth === 0))) {
+          throw new Error("Pipeline Error: Absolute asset image target is missing or incomplete.");
         }
 
-        if (!processingErrors) {
-            let gifOutput = `let gifFrames = [\n`;
-            frameResults.forEach((frame) => {
-                gifOutput += `  ${frame.spriteCode},\n`;
-            });
-            gifOutput += `];\n\nlet frameDelays = [\n`;
-            frameResults.forEach((frame) => {
-                gifOutput += `  ${frame.delay},\n`;
-            });
-            gifOutput += `];\n\nlet currentFrame = 0;\nlet animationSprite = sprites.create(gifFrames[0], SpriteKind.Player);\ngame.onEveryInterval(frameDelays[currentFrame], function () {\n  currentFrame = (currentFrame + 1) % gifFrames.length;\n  animationSprite.setImage(gifFrames[currentFrame]);\n});\n`;
+        const currentSizeMode = document.querySelector("input[name='sizeOption']:checked").id;
+        updateImageDimensions(img, currentSizeMode);
 
-            textarea.textContent = gifOutput;
-            statusDiv.textContent = `Conversion complete: ${gifData.frames.length} frames processed.`;
-            copyButton.removeAttribute("disabled");
-            downloadButton.removeAttribute("disabled");
-            runButton.removeAttribute("disabled");
-        }
-    } else {
-        // Process static image
-        try {
-            const result = await convert(img);
-            statusDiv.textContent = `Conversion complete. imagesizetotal(${imgSizeTotal.width}x${imgSizeTotal.height}) canvassizetotal(${sizeTotal.width}x${sizeTotal.height})`;
-            if ((isNaN(imgSizeTotal.width) || isNaN(imgSizeTotal.height)) || (isNaN(sizeTotal.width) || isNaN(sizeTotal.height))) {
-                statusDiv.textContent = "Invalid to converting from image size";
-            }
-        } catch (error) {
-            console.error("Error converting image:", error);
-            statusDiv.textContent = "Error converting image. See console.";
-            runButton.setAttribute("disabled", "true");
-            copyButton.setAttribute("disabled", "true");
-            downloadButton.setAttribute("disabled", "true");
-        }
-    }
+        let dateString = new Date().toISOString().replaceAll("-", "").replaceAll(":", "").replaceAll(".", "");
+        canvasName = `canvas${dateString}`;
 
-    document.querySelector("input#width").value = canvas.width;
-    document.querySelector("input#height").value = canvas.height;
+        if (gifData && gifData.frames.length > 1) {
+          statusDiv.textContent = `Compiling GIF Animation sequence [Total: ${gifData.frames.length} frames]...`;
+          const frameResults = [];
 
-    runButton.removeAttribute("disabled");
-    copyButton.removeAttribute("disabled");
-}
+          const gr = gifData.readerInstance; const frames = gifData.frames;
+          const virtualCanvas = document.createElement("canvas");
+          virtualCanvas.width = gifData.width; virtualCanvas.height = gifData.height;
+          const virtualCtx = virtualCanvas.getContext("2d");
 
-// Function to update the dimensions of the displayed img element based on radio button selection
-function updateImageDimensions(img, sizeMode) {
-    let imageWidth = originalImageSize.width;
-    let imageHeight = originalImageSize.height;
+          for (let i = 0; i < frames.length; i++) {
+            statusDiv.textContent = `Analyzing & rendering matrix sequence frame ${i + 1}/${frames.length}...`;
+            const blendedImageData = gifHandler.getFrameImageData(gr, i, virtualCtx);
+            virtualCtx.putImageData(blendedImageData, 0, 0);
 
-    if (sizeMode === "custom") {
-        let customWidth = parseInt(document.querySelector(".custom#width").value, 10);
-        let customHeight = parseInt(document.querySelector(".custom#height").value, 10);
+            const result = await convert(img, blendedImageData, i);
+            frameResults.push({ spriteCode: result.spriteCode, delay: frames[i].delay });
+          }
 
-        if (!isNaN(customWidth) && !isNaN(customHeight)) {
-            imageWidth = customWidth;
-            imageHeight = customHeight;
-        } else if (!isNaN(customWidth)) {
-            const factor = customWidth / originalImageSize.width;
-            imageWidth = customWidth;
-            imageHeight = Math.round(originalImageSize.height * factor);
-        } else if (!isNaN(customHeight)) {
-            const factor = customHeight / originalImageSize.height;
-            imageWidth = Math.round(originalImageSize.width * factor);
-            imageHeight = customHeight;
+          let gifOutput = `let gifFrames${dateString}: Image[] = [\n`;
+          frameResults.forEach((frame) => { gifOutput += `  ${frame.spriteCode},\n`; });
+          gifOutput += `];\n\nlet frameDelays${dateString} = [\n`;
+          frameResults.forEach((frame) => { gifOutput += `  ${frame.delay},\n`; });
+          gifOutput += `];\n\nlet currentFrame${dateString} = 0;\n`;
+          gifOutput += `let animationSprite${dateString} = sprites.create(gifFrames${dateString}[0], SpriteKind.Player);\n`;
+          gifOutput += `game.onEveryInterval(frameDelays${dateString}[0], function () {\n`;
+          gifOutput += `  currentFrame${dateString} = (currentFrame${dateString} + 1) % gifFrames${dateString}.length;\n`;
+          gifOutput += `  animationSprite${dateString}.setImage(gifFrames${dateString}[currentFrame${dateString}]);\n});\n`;
+
+          textarea.value = gifOutput;
+          statusDiv.textContent = `Conversion Complete. Original Size: (${imgSizeTotal.width}x${imgSizeTotal.height}) -> Result Size: (${sizeTotal.width}x${sizeTotal.height})`;
+          copyButton.removeAttribute("disabled"); downloadButton.removeAttribute("disabled");
         } else {
-            // Default to original size if custom inputs are invalid/empty
-            imageWidth = originalImageSize.width;
-            imageHeight = originalImageSize.height;
+          let singleFrameData = null;
+          if (gifData && gifData.frames.length === 1) {
+            const gr = gifData.readerInstance;
+            const dummyCanvas = document.createElement("canvas");
+            dummyCanvas.width = gr.width; dummyCanvas.height = gr.height;
+            singleFrameData = gifHandler.getFrameImageData(gr, 0, dummyCanvas.getContext("2d"));
+          }
+          const result = await convert(img, singleFrameData);
+          textarea.value = `let mySprite${dateString}: Image = ${result.spriteCode};\nlet playerSprite${dateString} = sprites.create(mySprite${dateString}, SpriteKind.Player);\n`;
+          statusDiv.textContent = `Conversion Complete. Original Size: (${imgSizeTotal.width}x${imgSizeTotal.height}) -> Result Size: (${sizeTotal.width}x${sizeTotal.height})`;
+          copyButton.removeAttribute("disabled"); downloadButton.removeAttribute("disabled");
         }
-    } else if (sizeMode === "scale") {
-        const factor = parseFloat(document.querySelector("input#factor").value);
-        if (!isNaN(factor)) {
-            imageWidth = Math.round(originalImageSize.width * factor);
-            imageHeight = Math.round(originalImageSize.height * factor);
-        } else {
-             // Default to original size if factor is invalid
-            imageWidth = originalImageSize.width;
-            imageHeight = originalImageSize.height;
-        }
-    } else if (sizeMode === "full-width") {
-        const factor = 160 / originalImageSize.width;
-        imageWidth = 160;
-        imageHeight = Math.round(originalImageSize.height * factor);
-    } else if (sizeMode === "full-height") {
-        const factor = 120 / originalImageSize.height;
-        imageWidth = Math.round(originalImageSize.width * factor);
-        imageHeight = 120;
-    } else {
-        // Default or original size
-        imageWidth = originalImageSize.width;
-        imageHeight = originalImageSize.height;
-    }
+        inputWidth.value = canvas.width; inputHeight.value = canvas.height; runButton.removeAttribute("disabled");
+      }
 
-     // Ensure dimensions are positive integers
-    img.width = Math.max(1, Math.round(imageWidth));
-    img.height = Math.max(1, Math.round(imageHeight));
+      function updateImageDimensions(img, sizeMode) {
+        let imageWidth = originalImageSize.width; let imageHeight = originalImageSize.height;
+        if (sizeMode === "custom") {
+          let customWidth = parseInt(inputWidth.value, 10); let customHeight = parseInt(inputHeight.value, 10);
+          if (!isNaN(customWidth) && !isNaN(customHeight)) { imageWidth = customWidth; imageHeight = customHeight; }
+          else if (!isNaN(customWidth)) { imageWidth = customWidth; imageHeight = Math.round(originalImageSize.height * (customWidth / originalImageSize.width)); }
+          else if (!isNaN(customHeight)) { imageWidth = Math.round(originalImageSize.width * (customHeight / originalImageSize.height)); imageHeight = customHeight; }
+        } else if (sizeMode === "scale") {
+          const factor = parseFloat(scaleFactor.value);
+          if (!isNaN(factor)) { imageWidth = Math.round(originalImageSize.width * factor); imageHeight = Math.round(originalImageSize.height * factor); }
+        } else if (sizeMode === "full-width") { imageWidth = 160; imageHeight = Math.round(originalImageSize.height * (160 / originalImageSize.width)); }
+        else if (sizeMode === "full-height") { imageWidth = Math.round(originalImageSize.width * (120 / originalImageSize.height)); imageHeight = 120; }
 
-    // Also update canvas display size for preview consistency before drawing
-    canvas.style.width = img.width + 'px';
-    canvas.style.height = img.height + 'px';
+        img.width = Math.max(1, Math.round(imageWidth)); img.height = Math.max(1, Math.round(imageHeight));
+        canvas.style.width = img.width + "px"; canvas.style.height = img.height + "px";
+      }
 
-     // The actual drawing resolution will be set within the convert function
-}
-
-document.querySelectorAll("input#width").forEach(iwidth => {
-    iwidth.addEventListener("change", function () {
-        if (document.querySelector("input#ratio").checked) {
+      document.querySelectorAll("input#width").forEach((iwidth) => {
+        iwidth.addEventListener("input", function () {
+          if (inputRatio.checked) {
             const img = document.querySelector("img");
-            if (img) {
-                const factor = document.querySelector("input#width").value / img.width;
-                document.querySelector("input#height").value = Math.round(document.querySelector("img").height * factor);
-            } else {
-                const factor = document.querySelector("input#width").value / canvas.width;
-                document.querySelector("input#height").value = Math.round(canvas.height * factor);
-            }
-        }
-    })
-})
+            const baseW = img ? img.width : canvas.width; const baseH = img ? img.height : canvas.height;
+            inputHeight.value = Math.round(baseH * (this.value / baseW));
+          }
+        });
+      });
 
-document.querySelectorAll("input#height").forEach(iheight => {
-    iheight.addEventListener("change", function () {
-        if (document.querySelector("input#ratio").checked) {
+      document.querySelectorAll("input#height").forEach((iheight) => {
+        iheight.addEventListener("input", function () {
+          if (inputRatio.checked) {
             const img = document.querySelector("img");
-            if (img) {
-                const factor = document.querySelector("input#height").value / img.height;
-                document.querySelector("input#width").value = Math.round(document.querySelector("img").width * factor);
-            } else {
-                const factor = document.querySelector("input#height").value / canvas.height;
-                document.querySelector("input#width").value = Math.round(canvas.width * factor);
-            }
+            const baseW = img ? img.width : canvas.width; const baseH = img ? img.height : canvas.height;
+            inputWidth.value = Math.round(baseW * (this.value / baseH));
+          }
+        });
+      });
+
+      function getRatioChecking() {
+        if (inputRatio.checked) {
+          const img = document.querySelector("img");
+          inputHeight.value = img ? img.height : canvas.height; inputWidth.value = img ? img.width : canvas.width;
         }
-    })
-})
+      }
 
-function getRatioChecking () {
-    if (document.querySelector("input#ratio").checked) {
-        if (image) {
-            document.querySelector("input#height").value = image.height;
-            document.querySelector("input#width").value = image.width;
-        } else {
-            document.querySelector("input#height").value = canvas.height;
-            document.querySelector("input#width").value = canvas.width;
-        }
-    }
-}
+      copyButton.addEventListener("click", function () { textarea.select(); document.execCommand("copy"); copyButton.innerText = "Code copied to clipboard!"; });
+      downloadButton.addEventListener("click", function (e) {
+        e.preventDefault(); const imgInfo = document.querySelector("img"); if (!imgInfo || !imgInfo.src) return alert("No image to download.");
+        const img = canvas.toDataURL(imgInfo.type || "image/png"); if (!img) return alert("No image to download.");
+        const link = document.createElement("a"); link.href = img; link.download = canvasName; link.click(); link.remove();
+      });
 
-document.querySelector("input#width").value = canvas.width
-document.querySelector("input#height").value = canvas.height
-
-// Restore original image size (this function is not needed anymore with updated logic)
-// function resetImageSize(img) {
-//     img.width = originalImageSize.width;
-//     img.height = originalImageSize.height;
-// }
-
-// Add copy functionality
-copyButton.addEventListener("click", function addCodeToClipboard() {
-    textarea.select();
-    document.execCommand("copy");
-    console.log("Code copied!");
-    copyButton.innerText = "Code copied to clipboard!";
-    // resetImageSize(document.querySelector("img")); // Not needed
-});
-
-downloadButton.addEventListener("click", function(e) {
-    e.preventDefault();
-    const imgInfo = document.querySelector("img");
-    if (!imgInfo || !imgInfo.src) {
-        alert("No image to download.");
-        return;
-    }
-    const img = canvas.toDataURL(`${imgInfo.type}` || "image/png"); // Use image type or default to PNG
-    if (!img) {
-        alert("No image to download.");
-        return;
-    }
-    const filename = `${canvasName}`; // Use canvasName or default to image.png
-    const link = document.createElement("a");
-    link.href = img;
-    link.download = filename;
-    link.click();
-    console.log(`Image downloaded as ${filename}`);
-    link.remove(); // Clean up the link element
-})
-
-console.log("Image Processing Tool Loaded");
+      console.log("Offline Embedded Module with Global Error Listeners Activated.");
