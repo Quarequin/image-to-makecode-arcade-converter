@@ -304,7 +304,7 @@
       border-color: #555;
     }
 
-    /* --- ระบบ Popup Error Alert อ่อนโยน --- */
+    /* --- ระบบ Popup Error Alert --- */
     #notification-popup-overlay {
       display: none;
       position: fixed;
@@ -585,24 +585,10 @@
       let originalImageSize = { width: 0, height: 0 };
       let originalMimeType = "image/png";
       
-      // ส่วนประกอบของระบบตั้งชื่อไฟล์ตามบรีฟ
-      let canvasFirstName = "sprite";
-      let dateString = "";
-      let canvasLastName = ".png";
-      
+      // ตัวแปรเก็บข้อมูลชื่อและนามสกุลไฟล์
+      let canvasName = "pic2mkca.png";
+      let canvasLastName = ".png"; 
       let rgbPalette = [];
-
-      // ฟังก์ชันเจนค่า dateString ในรูปแบบ _YYYYMMDD_HHmmss
-      function generateDateString() {
-        const d = new Date();
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const date = String(d.getDate()).padStart(2, '0');
-        const hours = String(d.getHours()).padStart(2, '0');
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-        const seconds = String(d.getSeconds()).padStart(2, '0');
-        return `_${year}${month}${date}_${hours}${minutes}${seconds}`;
-      }
 
       document.querySelectorAll(".color-pair").forEach((pair, idx) => {
         const picker = pair.querySelector('input[type="color"]');
@@ -684,17 +670,16 @@
 
         originalMimeType = file.type || "image/png";
         
-        // แยกเก็บโครงสร้างชื่อไฟล์หลักและส่วนขยายเมื่อเลือกไฟล์
+        // ดึงจุดทศนิยมของนามสกุลไฟล์เดิมเก็บไว้
         const lastDotIdx = file.name.lastIndexOf('.');
         if (lastDotIdx !== -1) {
-          canvasFirstName = file.name.substring(0, lastDotIdx) + "_converted";
           canvasLastName = file.name.substring(lastDotIdx);
         } else {
-          canvasFirstName = file.name + "_converted";
           canvasLastName = ".png";
         }
-
-        if (file.name.toLowerCase().endsWith(".gif")) {
+        
+        // หากต้นฉบับเป็น gif ให้แปลงนามสกุลปลายทางเป็น .png เพื่อความถูกต้องของ Canvas
+        if (canvasLastName.toLowerCase() === ".gif") {
           canvasLastName = ".png";
         }
 
@@ -770,8 +755,13 @@
           const img = document.querySelector("#original-preview-zone img");
           if (!img) return;
 
-          // อัปเดตค่า dateString ทุกครั้งที่เริ่มขั้นตอนประมวลผลข้อมูลตามบรีฟ
-          dateString = generateDateString();
+          // สร้าง dateString เป็น ISOdateTime ณ ตอนที่เริ่มประมวลผลตามบรีฟ
+          // คลีนเครื่องหมายโคลอน (:) ออกเพื่อให้สามารถนำไปตั้งชื่อไฟล์บน Windows/Linux ได้โดยไม่พัง
+          const now = new Date();
+          const dateString = now.toISOString().replace(/:/g, "-").replace(/\.\d{3}/, ""); // ผลลัพธ์เช่น 2026-05-26T14-50-00Z
+          
+          // อัปเดตโครงสร้างชื่อไฟล์ใหม่ล่าสุดประจำรอบการ Convert นั้นๆ
+          canvasName = `pic2mkca.${dateString}${canvasLastName}`;
 
           parseCurrentPalette();
 
@@ -783,7 +773,7 @@
           document.getElementById("canvas-res").textContent = `Size: ${w} x ${h} px`;
           const mode = document.querySelector('input[name="mode"]:checked').id.replace("mode-", "");
           statusDiv.textContent = `Processing matrix pipeline [${mode}]...`;
-          addToSessionLog("PIPELINE", `Start processing conversion. Target dimensions: ${w}x${h}. Mode: ${mode}. Assigned timestamp: ${dateString}`);
+          addToSessionLog("PIPELINE", `Start processing conversion. Target filename: ${canvasName}. Mode: ${mode}`);
 
           ctx.clearRect(0, 0, w, h);
           ctx.drawImage(img, 0, 0, w, h);
@@ -800,7 +790,7 @@
               for (let x = 0; x < w; x++) {
                 const idx = (y * w + x) * 4;
                 if (data[idx + 3] < 128) {
-                  outputHexArray[y][x] = "0";
+                  outputHexArray[y][x] = "0"; 
                 } else {
                   const nIdx = findNearestColor(data[idx], data[idx + 1], data[idx + 2]);
                   outputHexArray[y][x] = nIdx.toString(16);
@@ -817,7 +807,7 @@
                 
                 if (data[idx + 3] < 128) {
                   outputHexArray[y][x] = "0";
-                  continue;
+                  continue; 
                 }
 
                 let r = data[idx] + errors[errIdx];
@@ -892,7 +882,7 @@
                 outImgData.data[outIdx] = 0;
                 outImgData.data[outIdx+1] = 0;
                 outImgData.data[outIdx+2] = 0;
-                outImgData.data[outIdx+3] = 0;
+                outImgData.data[outIdx+3] = 0; 
               } else {
                 const palColor = rgbPalette[parseInt(char, 16) - 1];
                 outImgData.data[outIdx] = palColor.r;
@@ -913,7 +903,7 @@
           textarea.value = finalCodeStr;
           copyButton.removeAttribute("disabled");
           statusDiv.textContent = `Success: Convert completed in [${mode.toUpperCase()}] mode.`;
-          addToSessionLog("PIPELINE", `Render successful for [${mode.toUpperCase()}] method.`);
+          addToSessionLog("PIPELINE", `Render successful. Filename updated to ${canvasName}`);
         } catch (pipelineErr) {
           addToSessionLog("MATRIX_FAULT", pipelineErr.message, pipelineErr.stack);
           displayErrorPopup("Matrix Pipeline Conversion Fault", pipelineErr.message, pipelineErr.stack);
@@ -940,16 +930,13 @@
             exportMimeType = "image/png"; 
           }
 
-          // ผสมคำชื่อไฟล์ตามที่ภัทรกำหนดแบบไดนามิก
-          const fullCanvasName = `${canvasFirstName}${dateString}${canvasLastName}`;
-
           const dataUrl = canvas.toDataURL(exportMimeType);
           const link = document.createElement("a");
           link.href = dataUrl;
-          link.download = fullCanvasName;
+          link.download = canvasName; // จะใช้ชื่อที่ถูก Generate ไว้ตอนกด Convert ล่าสุด
           link.click();
           link.remove();
-          addToSessionLog("IO", `Triggered canvas attachment file download: ${fullCanvasName}`);
+          addToSessionLog("IO", `Triggered canvas attachment file download: ${canvasName}`);
         } catch (dnErr) {
           addToSessionLog("DOWNLOAD_FAULT", dnErr.message, dnErr.stack);
           displayErrorPopup("IO Canvas Download Error", dnErr.message, dnErr.stack);
