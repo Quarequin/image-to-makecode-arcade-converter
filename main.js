@@ -84,7 +84,7 @@ const paletteArcadeColors = [
 let originalImageSize = { width: 0, height: 0 };
 let originalMimeType = "image/png";
 let canvasName = "pic2mkca-null.png",
-  convertedName = "pic2mkca-converted";
+  convertedName = "pic2mkca";
 let rgbPalette = [];
 let dateString = new Date()
   .toISOString()
@@ -185,7 +185,7 @@ fileInput.addEventListener("change", function () {
   originalMimeType = file.type || "image/png";
   canvasName = `${file.name.substring(0, file.name.lastIndexOf("."))}_${convertedName}_${dateString}${file.name.substring(file.name.lastIndexOf("."))}`;
   if (file.name.toLowerCase().endsWith(".gif")) {
-    canvasName = `${file.name.substring(0, file.name.lastIndexOf("."))}_${convertedName}_${dateString}.png`;
+    canvasName = `${file.name.substring(0, file.name.lastIndexOf("."))}_${convertedName}-${dateString}.png`;
   }
 
   const reader = new FileReader();
