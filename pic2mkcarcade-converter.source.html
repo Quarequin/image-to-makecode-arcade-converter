@@ -904,11 +904,11 @@
           }
           ctx.putImageData(outImgData, 0, 0);
 
-          let finalCodeStr = `img\\\`\\n`;
+          let finalCodeStr = `img\`\n`;
           for (let y = 0; y < h; y++) {
             finalCodeStr += "    " + outputHexArray[y].join("") + "\n";
           }
-          finalCodeStr += `\\\``;
+          finalCodeStr += `\``;
 
           textarea.value = finalCodeStr;
           copyButton.removeAttribute("disabled");
