@@ -304,7 +304,7 @@
       border-color: #555;
     }
 
-    /* --- ระบบ Popup Error Alert อ่อนโยน ปรับปรุงปุ่มดู Log เพิ่มเติมตามบรีฟ --- */
+    /* --- ระบบ Popup Error Alert อ่อนโยน --- */
     #notification-popup-overlay {
       display: none;
       position: fixed;
@@ -363,7 +363,7 @@
       background: #444;
     }
     .popup-body pre {
-      display: none; /* ซ่อนไว้ก่อนเริ่มต้นเพื่อไม่ให้ตกใจ */
+      display: none;
       background: #0d0d0d;
       padding: 10px;
       border-radius: 4px;
@@ -520,7 +520,6 @@
     <textarea id="output" placeholder="The matrix assembly hex string will be generated into this layout sector..."></textarea>
 
     <script>
-      // ตัวแปรเก็บ log ประจำ Session ตามบรีฟ ทำลายตัวเองทันทีเมื่อ Reload หน้าเว็บหรือปิดแท็บ
       let htmlLog = [];
 
       function addToSessionLog(type, message, detail = "") {
@@ -530,7 +529,6 @@
         console.log(logEntry);
       }
 
-      // บันทึก Log การเริ่มต้นทำงานไฟล์
       addToSessionLog("SYSTEM", "Application initialized successfully.");
 
       window.addEventListener("error", function(e) {
@@ -544,7 +542,6 @@
         document.getElementById("popup-err-message").textContent = message;
         document.getElementById("popup-err-stack").textContent = stack || "No call stack trace records.";
         
-        // รีเซ็ตสถานะปุ่มคลี่ log ให้ซ่อนไว้ก่อนทุกครั้งที่แสดงผลใหม่เพื่อกันตกใจ
         const logPanel = document.getElementById("popup-err-stack");
         const toggleBtn = document.getElementById("btn-toggle-log");
         logPanel.style.display = "none";
@@ -587,8 +584,25 @@
 
       let originalImageSize = { width: 0, height: 0 };
       let originalMimeType = "image/png";
-      let canvasName = "sprite.png";
+      
+      // ส่วนประกอบของระบบตั้งชื่อไฟล์ตามบรีฟ
+      let canvasFirstName = "sprite";
+      let dateString = "";
+      let canvasLastName = ".png";
+      
       let rgbPalette = [];
+
+      // ฟังก์ชันเจนค่า dateString ในรูปแบบ _YYYYMMDD_HHmmss
+      function generateDateString() {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const date = String(d.getDate()).padStart(2, '0');
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const seconds = String(d.getSeconds()).padStart(2, '0');
+        return `_${year}${month}${date}_${hours}${minutes}${seconds}`;
+      }
 
       document.querySelectorAll(".color-pair").forEach((pair, idx) => {
         const picker = pair.querySelector('input[type="color"]');
@@ -669,9 +683,19 @@
         if (!file) return;
 
         originalMimeType = file.type || "image/png";
-        canvasName = file.name.substring(0, file.name.lastIndexOf('.')) + "_converted" + file.name.substring(file.name.lastIndexOf('.'));
+        
+        // แยกเก็บโครงสร้างชื่อไฟล์หลักและส่วนขยายเมื่อเลือกไฟล์
+        const lastDotIdx = file.name.lastIndexOf('.');
+        if (lastDotIdx !== -1) {
+          canvasFirstName = file.name.substring(0, lastDotIdx) + "_converted";
+          canvasLastName = file.name.substring(lastDotIdx);
+        } else {
+          canvasFirstName = file.name + "_converted";
+          canvasLastName = ".png";
+        }
+
         if (file.name.toLowerCase().endsWith(".gif")) {
-          canvasName = file.name.substring(0, file.name.lastIndexOf('.')) + "_converted.png";
+          canvasLastName = ".png";
         }
 
         const reader = new FileReader();
@@ -740,12 +764,14 @@
         }
       });
 
-      // --- ฟังก์ชันประมวลผลหลักที่ได้รับการซ่อมแซมและรองรับความโปร่งแสงสมบูรณ์ทุกโหมด ---
       runButton.addEventListener("click", function (e) {
         e.preventDefault();
         try {
           const img = document.querySelector("#original-preview-zone img");
           if (!img) return;
+
+          // อัปเดตค่า dateString ทุกครั้งที่เริ่มขั้นตอนประมวลผลข้อมูลตามบรีฟ
+          dateString = generateDateString();
 
           parseCurrentPalette();
 
@@ -757,14 +783,13 @@
           document.getElementById("canvas-res").textContent = `Size: ${w} x ${h} px`;
           const mode = document.querySelector('input[name="mode"]:checked').id.replace("mode-", "");
           statusDiv.textContent = `Processing matrix pipeline [${mode}]...`;
-          addToSessionLog("PIPELINE", `Start processing conversion. Target dimensions: ${w}x${h}. Mode: ${mode}`);
+          addToSessionLog("PIPELINE", `Start processing conversion. Target dimensions: ${w}x${h}. Mode: ${mode}. Assigned timestamp: ${dateString}`);
 
           ctx.clearRect(0, 0, w, h);
           ctx.drawImage(img, 0, 0, w, h);
           const imgData = ctx.getImageData(0, 0, w, h);
           const data = imgData.data;
 
-          // จองพื้นที่ Array 2 มิติเพื่อป้องกันข้อผิดพลาด Undefined ตลอดสายการแปลงข้อมูล
           let outputHexArray = [];
           for (let y = 0; y < h; y++) {
             outputHexArray[y] = new Array(w);
@@ -775,7 +800,7 @@
               for (let x = 0; x < w; x++) {
                 const idx = (y * w + x) * 4;
                 if (data[idx + 3] < 128) {
-                  outputHexArray[y][x] = "0"; // โปร่งแสง
+                  outputHexArray[y][x] = "0";
                 } else {
                   const nIdx = findNearestColor(data[idx], data[idx + 1], data[idx + 2]);
                   outputHexArray[y][x] = nIdx.toString(16);
@@ -784,7 +809,6 @@
             }
           } 
           else if (mode === "error") {
-            // โหมด Error Diffusion (Floyd-Steinberg): ซ่อมแซมระบบข้ามพิกเซลและจัดการเศษสีเหลือทิ้ง
             let errors = new Float32Array(w * h * 3);
             for (let y = 0; y < h; y++) {
               for (let x = 0; x < w; x++) {
@@ -793,7 +817,7 @@
                 
                 if (data[idx + 3] < 128) {
                   outputHexArray[y][x] = "0";
-                  continue; // ข้ามไปโดยพิกเซลโปร่งแสงจะไม่กระจายสีเพี้ยนใส่พิกเซลข้างเคียง
+                  continue;
                 }
 
                 let r = data[idx] + errors[errIdx];
@@ -812,7 +836,6 @@
                 const eg = g - actualColor.g;
                 const eb = b - actualColor.b;
 
-                // ฟังก์ชันย่อยกระจาย Error ไปยังพิกเซลข้างเคียงเฉพาะจุดที่เป็นพิกเซลทึบแสงเท่านั้น
                 const distribute = (nx, ny, factor) => {
                   if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
                     const nIdxNext = (ny * w + nx) * 4;
@@ -832,7 +855,6 @@
             }
           } 
           else if (mode === "bayer") {
-            // โหมด Ordered Bayer Matrix: ซ่อมแซมโครงพิกเซลโปร่งแสงสอดคล้องกับมิติภาพอย่างแม่นยำ
             const bayer = [
               [ 0,  8,  2, 10],
               [12,  4, 14,  6],
@@ -860,7 +882,6 @@
             }
           }
 
-          // แสดงผลลัพธ์กลับลง Canvas พรีวิว
           ctx.clearRect(0, 0, w, h);
           const outImgData = ctx.createImageData(w, h);
           for(let y=0; y<h; y++) {
@@ -871,7 +892,7 @@
                 outImgData.data[outIdx] = 0;
                 outImgData.data[outIdx+1] = 0;
                 outImgData.data[outIdx+2] = 0;
-                outImgData.data[outIdx+3] = 0; // ตั้งค่าโปร่งแสงสมบูรณ์
+                outImgData.data[outIdx+3] = 0;
               } else {
                 const palColor = rgbPalette[parseInt(char, 16) - 1];
                 outImgData.data[outIdx] = palColor.r;
@@ -883,12 +904,11 @@
           }
           ctx.putImageData(outImgData, 0, 0);
 
-          // แปลงอาเรย์รหัสฐานสิบหกออกมาเป็น Code String ประจำอาร์เคดสไปรต์
-          let finalCodeStr = `img\`\n`;
+          let finalCodeStr = `img\\\`\\n`;
           for (let y = 0; y < h; y++) {
             finalCodeStr += "    " + outputHexArray[y].join("") + "\n";
           }
-          finalCodeStr += `\``;
+          finalCodeStr += `\\\``;
 
           textarea.value = finalCodeStr;
           copyButton.removeAttribute("disabled");
@@ -920,13 +940,16 @@
             exportMimeType = "image/png"; 
           }
 
+          // ผสมคำชื่อไฟล์ตามที่ภัทรกำหนดแบบไดนามิก
+          const fullCanvasName = `${canvasFirstName}${dateString}${canvasLastName}`;
+
           const dataUrl = canvas.toDataURL(exportMimeType);
           const link = document.createElement("a");
           link.href = dataUrl;
-          link.download = canvasName;
+          link.download = fullCanvasName;
           link.click();
           link.remove();
-          addToSessionLog("IO", `Triggered canvas attachment file download: ${canvasName}`);
+          addToSessionLog("IO", `Triggered canvas attachment file download: ${fullCanvasName}`);
         } catch (dnErr) {
           addToSessionLog("DOWNLOAD_FAULT", dnErr.message, dnErr.stack);
           displayErrorPopup("IO Canvas Download Error", dnErr.message, dnErr.stack);
