@@ -1,476 +1,490 @@
-// --- Global Error & Exception Logger ---
-      // ดักจับ Error ทุกรูปแบบในหน้าเว็บ (ตั้งแต่ต้นทางถึงปลายทาง) แล้วพ่นลง textarea ทันที
-      window.addEventListener('error', function(event) {
-        const textarea = document.getElementById("makecodeArcadeOutput");
-        const statusDiv = document.querySelector("#status");
-        if (statusDiv) statusDiv.textContent = "System Fault: Error captured.";
-        if (textarea) {
-          textarea.value = `[Global Runtime Error Log]\n` +
-                         `Message: ${event.message}\n` +
-                         `Source: ${event.filename}\n` +
-                         `Line: ${event.lineno}, Column: ${event.colno}\n\n` +
-                         `Technical Stack Trace:\n${event.error ? event.error.stack : 'No stack trace available.'}`;
-        }
-      });
+// ตัวแปรเก็บ log ประจำ Session ตามบรีฟ ทำลายตัวเองทันทีเมื่อ Reload หน้าเว็บหรือปิดแท็บ
+let htmlLog = [];
 
-      window.addEventListener('unhandledrejection', function(event) {
-        const textarea = document.getElementById("makecodeArcadeOutput");
-        const statusDiv = document.querySelector("#status");
-        if (statusDiv) statusDiv.textContent = "System Fault: Async Promise Rejected.";
-        if (textarea) {
-          textarea.value = `[Unhandled Promise Rejection Log]\n` +
-                         `Reason: ${event.reason}\n\n` +
-                         `Technical Stack Trace:\n${event.reason && event.reason.stack ? event.reason.stack : 'No stack trace available.'}`;
-        }
-      });
+function addToSessionLog(type, message, detail = "") {
+  const timestamp = new Date().toISOString().split("T")[1].substring(0, 8);
+  const logEntry = `[${timestamp}] [${type}] ${message} ${detail ? "\nDetail: " + detail : ""}`;
+  htmlLog.push(logEntry);
+  console.log(logEntry);
+}
 
-      // --- GIF Processor Engine Pipeline ---
-      const gifHandler = {
-        createReader(arrayBuffer) {
-          if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-            throw new Error("Source ArrayBuffer is empty or zero-byte length. Android Content Provider failed to stream file data.");
+// บันทึก Log การเริ่มต้นทำงานไฟล์
+addToSessionLog("SYSTEM", "Application initialized successfully.");
+
+window.addEventListener("error", function (e) {
+  const stackTrace = e.error ? e.error.stack : "No call stack available.";
+  addToSessionLog("CRITICAL_ERROR", e.message, stackTrace);
+  displayErrorPopup("Uncaught Runtime Exception", e.message, stackTrace);
+});
+
+function displayErrorPopup(type, message, stack) {
+  document.getElementById("popup-err-type").textContent = type;
+  document.getElementById("popup-err-message").textContent = message;
+  document.getElementById("popup-err-stack").textContent =
+    stack || "No call stack trace records.";
+
+  // รีเซ็ตสถานะปุ่มคลี่ log ให้ซ่อนไว้ก่อนทุกครั้งที่แสดงผลใหม่เพื่อกันตกใจ
+  const logPanel = document.getElementById("popup-err-stack");
+  const toggleBtn = document.getElementById("btn-toggle-log");
+  logPanel.style.display = "none";
+  toggleBtn.textContent = "ดู log ตัวเต็ม (Show Full Log) ▼";
+
+  document.getElementById("notification-popup-overlay").style.display = "flex";
+}
+
+function toggleErrorLog() {
+  const logPanel = document.getElementById("popup-err-stack");
+  const toggleBtn = document.getElementById("btn-toggle-log");
+  if (logPanel.style.display === "none" || logPanel.style.display === "") {
+    logPanel.style.display = "block";
+    toggleBtn.textContent = "ซ่อน log ตัวเต็ม (Hide Full Log) ▲";
+  } else {
+    logPanel.style.display = "none";
+    toggleBtn.textContent = "ดู log ตัวเต็ม (Show Full Log) ▼";
+  }
+}
+
+function closeErrorPopup() {
+  document.getElementById("notification-popup-overlay").style.display = "none";
+}
+
+const fileInput = document.getElementById("file");
+const paletteFileInput = document.getElementById("palette-file-reader");
+const runButton = document.getElementById("run");
+const copyButton = document.getElementById("copy");
+const downloadButton = document.getElementById("download");
+const statusDiv = document.getElementById("status");
+const textarea = document.getElementById("output");
+const previewContainer = document.querySelector(".image-preview-container");
+const canvas = document.querySelector("canvas");
+const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+const inputWidth = document.getElementById("width");
+const inputHeight = document.getElementById("height");
+const inputFactor = document.getElementById("factor");
+const inputRatio = document.getElementById("ratio");
+const paletteArcadeColors = [
+  "#ffffff",
+  "#ff2121",
+  "#ff93c4",
+  "#ff8135",
+  "#fff609",
+  "#249ca3",
+  "#78dc52",
+  "#003fad",
+  "#87f2ff",
+  "#8e2ec4",
+  "#a4839f",
+  "#5c406c",
+  "#e5cdc4",
+  "#91463d",
+  "#000000",
+];
+
+let originalImageSize = { width: 0, height: 0 };
+let originalMimeType = "image/png";
+let canvasName = "pic2mkca-null.png",
+  convertedName = "pic2mkca-converted";
+let rgbPalette = [];
+let dateString = new Date()
+  .toISOString()
+  .replaceAll("-", "")
+  .replaceAll(":", "")
+  .replaceAll(".", "");
+
+document.querySelectorAll(".color-pair").forEach((pair, idx) => {
+  const picker = pair.querySelector('input[type="color"]');
+  const txt = pair.querySelector(".colortext");
+  picker.addEventListener("input", function () {
+    txt.value = this.value;
+  });
+  txt.addEventListener("change", function () {
+    let val = this.value.trim();
+    if (!val.startsWith("#")) val = "#" + val;
+    if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+      picker.value = val;
+      this.value = val;
+      addToSessionLog("PALETTE", `Color slot ${idx + 1} updated to ${val}`);
+    }
+  });
+});
+
+paletteFileInput.addEventListener("change", function (e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (evt) {
+    const lines = evt.target.result.split(/\r?\n/);
+    let colorsFound = [];
+    lines.forEach((line) => {
+      let clean = line.trim().replace(/;.*$/, "").trim();
+      if (!clean) return;
+      let match = clean.match(/#?([0-9A-Fa-f]{6})/);
+      if (match) {
+        colorsFound.push("#" + match[1].toLowerCase());
+      }
+    });
+    if (colorsFound.length > 0) {
+      const pairs = document.querySelectorAll(".color-pair");
+      for (let i = 0; i < pairs.length && i < colorsFound.length; i++) {
+        const picker = pairs[i].querySelector('input[type="color"]');
+        const txt = pairs[i].querySelector(".colortext");
+        picker.value = colorsFound[i];
+        txt.value = colorsFound[i];
+      }
+      statusDiv.textContent = `System: Loaded ${Math.min(pairs.length, colorsFound.length)} colors from palette file.`;
+      addToSessionLog(
+        "PALETTE",
+        `Imported external palette from ${file.name}. Total found: ${colorsFound.length}`,
+      );
+    } else {
+      alert("No valid hex colors found in the selected file.");
+    }
+  };
+  reader.readAsText(file);
+});
+
+function parseCurrentPalette() {
+  rgbPalette = [];
+  document.querySelectorAll(".color-pair").forEach((pair) => {
+    const hex = pair.querySelector('input[type="color"]').value;
+    const r = parseInt(hex.substring(1, 3), 16);
+    const g = parseInt(hex.substring(3, 5), 16);
+    const b = parseInt(hex.substring(5, 7), 16);
+    rgbPalette.push({ r, g, b });
+  });
+}
+
+function findNearestColor(r, g, b) {
+  let minDistance = Infinity;
+  let nearestIndex = 1;
+  for (let i = 0; i < rgbPalette.length; i++) {
+    const distance =
+      Math.pow(r - rgbPalette[i].r, 2) +
+      Math.pow(g - rgbPalette[i].g, 2) +
+      Math.pow(b - rgbPalette[i].b, 2);
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearestIndex = i + 1;
+    }
+  }
+  return nearestIndex;
+}
+
+fileInput.addEventListener("change", function () {
+  textarea.value = "";
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  dateString = new Date()
+    .toISOString()
+    .replaceAll("-", "")
+    .replaceAll(":", "")
+    .replaceAll(".", "");
+
+  originalMimeType = file.type || "image/png";
+  canvasName = `${file.name.substring(0, file.name.lastIndexOf("."))}_${convertedName}_${dateString}${file.name.substring(file.name.lastIndexOf("."))}`;
+  if (file.name.toLowerCase().endsWith(".gif")) {
+    canvasName = `${file.name.substring(0, file.name.lastIndexOf("."))}_${convertedName}_${dateString}.png`;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        if (previewContainer) previewContainer.style.display = "flex";
+
+        originalImageSize.width = img.naturalWidth;
+        originalImageSize.height = img.naturalHeight;
+
+        document.getElementById("original-res").textContent =
+          `Size: ${img.naturalWidth} x ${img.naturalHeight} px`;
+        document.getElementById("canvas-res").textContent = `Size: -- x -- px`;
+
+        const zone = document.getElementById("original-preview-zone");
+        zone.innerHTML = "";
+        zone.appendChild(img);
+
+        document
+          .querySelectorAll("input[disabled]")
+          .forEach((el) => el.removeAttribute("disabled"));
+        runButton.removeAttribute("disabled");
+        downloadButton.removeAttribute("disabled");
+
+        updateCalculatedDimensions();
+        statusDiv.textContent = `Ready: ${file.name} Loaded Successfully.`;
+        addToSessionLog(
+          "IMAGE",
+          `Loaded target resource file: ${file.name} (${img.naturalWidth}x${img.naturalHeight})`,
+        );
+      } catch (innerErr) {
+        displayErrorPopup(
+          "Image Allocation Core Exception",
+          innerErr.message,
+          innerErr.stack,
+        );
+      }
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+function updateCalculatedDimensions() {
+  const img = document.querySelector("#original-preview-zone img");
+  if (!img) return;
+
+  if (document.getElementById("full-width").checked) {
+    inputWidth.value = 160;
+    inputHeight.value = Math.round(
+      originalImageSize.height * (160 / originalImageSize.width),
+    );
+  } else if (document.getElementById("full-height").checked) {
+    inputHeight.value = 120;
+    inputWidth.value = Math.round(
+      originalImageSize.width * (120 / originalImageSize.height),
+    );
+  } else if (document.getElementById("scale").checked) {
+    const f = parseFloat(inputFactor.value) || 0.1;
+    inputWidth.value = Math.round(originalImageSize.width * f);
+    inputHeight.value = Math.round(originalImageSize.height * f);
+  }
+}
+
+document.querySelectorAll('input[name="resize"], #factor').forEach((el) => {
+  el.addEventListener("change", updateCalculatedDimensions);
+  el.addEventListener("input", updateCalculatedDimensions);
+});
+
+inputWidth.addEventListener("input", function () {
+  if (inputRatio.checked && originalImageSize.width > 0) {
+    inputHeight.value = Math.round(
+      (originalImageSize.height * (parseInt(this.value) || 1)) /
+        originalImageSize.width,
+    );
+  }
+});
+inputHeight.addEventListener("input", function () {
+  if (inputRatio.checked && originalImageSize.height > 0) {
+    inputWidth.value = Math.round(
+      (originalImageSize.width * (parseInt(this.value) || 1)) /
+        originalImageSize.height,
+    );
+  }
+});
+
+// --- ฟังก์ชันประมวลผลหลักที่ได้รับการซ่อมแซมและรองรับความโปร่งแสงสมบูรณ์ทุกโหมด ---
+runButton.addEventListener("click", function (e) {
+  e.preventDefault();
+  try {
+    const img = document.querySelector("#original-preview-zone img");
+    if (!img) return;
+
+    parseCurrentPalette();
+
+    const w = parseInt(inputWidth.value) || 16;
+    const h = parseInt(inputHeight.value) || 16;
+    canvas.width = w;
+    canvas.height = h;
+
+    document.getElementById("canvas-res").textContent = `Size: ${w} x ${h} px`;
+    const mode = document
+      .querySelector('input[name="mode"]:checked')
+      .id.replace("mode-", "");
+    statusDiv.textContent = `Processing matrix pipeline [${mode}]...`;
+    addToSessionLog(
+      "PIPELINE",
+      `Start processing conversion. Target dimensions: ${w}x${h}. Mode: ${mode}`,
+    );
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    // จองพื้นที่ Array 2 มิติเพื่อป้องกันข้อผิดพลาด Undefined ตลอดสายการแปลงข้อมูล
+    let outputHexArray = [];
+    for (let y = 0; y < h; y++) {
+      outputHexArray[y] = new Array(w);
+    }
+
+    if (mode === "solid") {
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = (y * w + x) * 4;
+          if (data[idx + 3] < 128) {
+            outputHexArray[y][x] = "0"; // โปร่งแสง
+          } else {
+            const nIdx = findNearestColor(
+              data[idx],
+              data[idx + 1],
+              data[idx + 2],
+            );
+            outputHexArray[y][x] = nIdx.toString(16);
           }
-          const typedArray = arrayBuffer instanceof Uint8Array ? arrayBuffer : new Uint8Array(arrayBuffer);
-          if (typedArray.length < 6 || typedArray[0] !== 0x47 || typedArray[1] !== 0x49 || typedArray[2] !== 0x46) {
-            throw new Error(`Invalid Magic Number [${typedArray[0]||0}, ${typedArray[1]||0}, ${typedArray[2]||0}]. The file data stream was modified or truncated by Android Content URI restrictions.`);
-          }
-          return new omggif.GifReader(typedArray);
-        },
-        getFrames(gr) {
-          const frames = [];
-          for (let i = 0; i < gr.numFrames(); i++) {
-            const info = gr.frameInfo(i);
-            frames.push({
-              index: i,
-              delay: (info.delay || 10) * 10,
-              disposal: info.disposal,
-              dims: { left: info.x, top: info.y, width: info.width, height: info.height }
-            });
-          }
-          return frames;
-        },
-        getFrameImageData(gr, frameIndex, previousCanvasCtx) {
-          const width = gr.width;
-          const height = gr.height;
-          const frameCanvas = document.createElement("canvas");
-          frameCanvas.width = width;
-          frameCanvas.height = height;
-          const frameCtx = frameCanvas.getContext("2d");
-
-          if (frameIndex > 0) {
-            const prevInfo = gr.frameInfo(frameIndex - 1);
-            if (prevInfo.disposal === 2) {
-              frameCtx.clearRect(0, 0, width, height);
-            } else {
-              frameCtx.drawImage(previousCanvasCtx.canvas, 0, 0);
-            }
-          }
-
-          const frameImageData = frameCtx.createImageData(width, height);
-          gr.decodeAndBlitFrame(frameIndex, frameImageData.data);
-          return frameImageData;
-        }
-      };
-
-      let currentMode = "solid";
-      let originalImageSize = { width: 0, height: 0 };
-      let gifData = null;
-      let gifMinDelay = 0;
-      let imgrender = [];
-      let sizeTotal = { width: 0, height: 0 };
-      let imgSizeTotal = { width: 0, height: 0 };
-      let canvasName = "canvas";
-
-      // --- DOM Cache Elements ---
-      const canvas = document.querySelector("canvas");
-      const ctx = canvas.getContext("2d");
-      const copyButton = document.querySelector("button#copy");
-      const runButton = document.querySelector("button#run");
-      const downloadButton = document.querySelector("button#download");
-      const customSizes = document.querySelectorAll("input[type='number'].custom");
-      const fileInput = document.querySelector("input#myFile");
-      const form = document.querySelector("form");
-      const radioButtons = document.querySelectorAll("input[name='sizeOption']");
-      const colorPicks = document.querySelectorAll("input.colorpicker[type='color']");
-      const colorTexts = document.querySelectorAll("input.colortext[type='text']");
-      const scaleFactor = document.querySelector("input[type='number']#factor");
-      const textarea = document.getElementById("makecodeArcadeOutput");
-      const statusDiv = document.querySelector("#status");
-      const inputWidth = document.querySelector("input#width");
-      const inputHeight = document.querySelector("input#height");
-      const inputRatio = document.querySelector("input#ratio");
-      const modeRadios = document.querySelectorAll("input[name='processingMode']");
-
-      // --- Math & Color Utilities ---
-      function isValidHex(hex) { return /^#([0-9A-Fa-f]{6})$/.test(hex); }
-      function hexToRgb(hex) { return { r: parseInt(hex[1] + hex[2], 16), g: parseInt(hex[3] + hex[4], 16), b: parseInt(hex[5] + hex[6], 16) }; }
-      function rgbToHex(r, g, b) { const toHex = (c) => c.toString(16).padStart(2, "0"); return `#${toHex(r)}${toHex(g)}${toHex(b)}`; }
-      function colorDistanceSq(color1, color2) { const dr = color1.r - color2.r, dg = color1.g - color2.g, db = color1.b - color2.b; return dr * dr + dg * dg + db * db; }
-      function getPixelColor(imageData, x, y) { const index = (y * imageData.width + x) * 4; return { r: imageData.data[index], g: imageData.data[index + 1], b: imageData.data[index + 2], a: imageData.data[index + 3] }; }
-      function setPixelColor(imageData, x, y, r, g, b, a = 255) { const index = (y * imageData.width + x) * 4; imageData.data[index] = r; imageData.data[index + 1] = g; imageData.data[index + 2] = b; imageData.data[index + 3] = a; }
-      function getNearestColorFast(targetColor, paletteColors) { let minSqDist = Infinity; let nearest = paletteColors[0]; for (let i = 0; i < paletteColors.length; i++) { const dist = colorDistanceSq(targetColor, paletteColors[i].color); if (dist < minSqDist) { minSqDist = dist; nearest = paletteColors[i]; } } return nearest; }
-
-      // --- UI Controllers ---
-      function syncColorToText(colorInput) { const textInput = document.querySelector(`input.colortext[id='${colorInput.id}']`); if (textInput) textInput.value = colorInput.value; }
-      function syncTextToColor(textInput) { const colorInput = document.querySelector(`input.colorpicker[id='${textInput.id}']`); if (colorInput) { if (isValidHex(textInput.value)) colorInput.value = textInput.value; else textInput.value = colorInput.value; } }
-      colorPicks.forEach((input) => input.addEventListener("input", () => syncColorToText(input)));
-      colorTexts.forEach((input) => input.addEventListener("change", () => syncTextToColor(input)));
-
-      // --- Event Handlers ---
-      runButton.addEventListener("click", running);
-      fileInput.addEventListener("change", whenImageIsUploaded);
-
-      radioButtons.forEach((radioButton) => {
-        radioButton.addEventListener("change", function () {
-          inputWidth.removeAttribute("disabled"); inputHeight.removeAttribute("disabled"); runButton.removeAttribute("disabled"); inputRatio.removeAttribute("disabled");
-          let sizeMode = this.id;
-          if (sizeMode === "custom") {
-            const img = document.querySelector("img");
-            if (img) { inputWidth.value = img.width; inputHeight.value = img.height; } else { inputWidth.value = canvas.width; inputHeight.value = canvas.height; }
-          } else { inputRatio.setAttribute("disabled", "true"); }
-          customSizes.forEach((field) => (field.disabled = sizeMode !== "custom"));
-          scaleFactor.disabled = sizeMode !== "scale";
-          if (sizeMode === "scale" && scaleFactor.value === "") scaleFactor.value = 0.1;
-          const img = document.querySelector("img"); if (img) updateImageDimensions(img, sizeMode);
-        });
-      });
-
-      modeRadios.forEach((radio) => radio.addEventListener("change", function () { currentMode = this.value; }));
-
-      const palInput = document.getElementById("myPal");
-      palInput.addEventListener("change", function (e) {
-        const file = palInput.files[0];
-        if (!file) {
-          const arcadeColors = [ "#ffffff", "#ff2121", "#ff93c4", "#ff8135", "#fff609", "#249ca3", "#78dc52", "#003fad", "#87f2ff", "#8e2ec4", "#a4839f", "#5c406c", "#e5cdc4", "#91463d", "#000000" ];
-          document.querySelectorAll("input.colorpicker").forEach((input, index) => { input.value = arcadeColors[index]; syncColorToText(input); });
-          return;
-        }
-        const reader = new FileReader(); reader.onload = function (e) { readPalText(reader.result); }; reader.readAsText(file);
-      });
-
-      function readPalText(palText) {
-        const lines = palText.split("\n");
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (i < 15) {
-            let color = line.toString(); if (color.charAt(0) !== "#") color = "#" + color;
-            const colorInput = document.querySelector(`input.colorpicker[id='col${i + 1}']`);
-            if (colorInput && isValidHex(color)) { colorInput.value = color; syncColorToText(colorInput); }
-          } else break;
         }
       }
-      form.addEventListener("submit", (e) => e.preventDefault());
+    } else if (mode === "error") {
+      // โหมด Error Diffusion (Floyd-Steinberg): ซ่อมแซมระบบข้ามพิกเซลและจัดการเศษสีเหลือทิ้ง
+      let errors = new Float32Array(w * h * 3);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = (y * w + x) * 4;
+          const errIdx = (y * w + x) * 3;
 
-      // --- Stable Binary Engine for Image Loading ---
-      function whenImageIsUploaded() {
-        runButton.setAttribute("disabled", "true");
-        copyButton.setAttribute("disabled", "true");
-        statusDiv.textContent = "Loading file pipeline...";
-        textarea.value = ""; 
-        gifData = null;
-
-        const file = fileInput.files[0];
-        if (!file) return;
-
-        const node = document.querySelector("img");
-        if (node) node.parentNode.removeChild(node);
-
-        const img = document.createElement("img");
-        document.querySelector("div.output").appendChild(img);
-
-        img.onload = () => {
-          if (originalImageSize.width !== img.naturalWidth || originalImageSize.height !== img.naturalHeight) {
-              originalImageSize.width = img.naturalWidth;
-              originalImageSize.height = img.naturalHeight;
-          }
-          const initialSizeMode = document.querySelector("input[name='sizeOption']:checked").id;
-          updateImageDimensions(img, initialSizeMode);
-          statusDiv.textContent = `Image pipeline attached: ${originalImageSize.width}x${originalImageSize.height}`;
-          runButton.removeAttribute("disabled");
-          running();
-        };
-
-        if (file.type === "image/gif" || file.name.toLowerCase().endsWith('.gif')) {
-          statusDiv.textContent = `Parsing GIF byte stream [Size: ${file.size} bytes]...`;
-          if (file.size === 0) {
-            throw new Error("Cannot decode GIF buffer: Target file has 0 bytes (Android Content URI restriction).");
+          if (data[idx + 3] < 128) {
+            outputHexArray[y][x] = "0";
+            continue; // ข้ามไปโดยพิกเซลโปร่งแสงจะไม่กระจายสีเพี้ยนใส่พิกเซลข้างเคียง
           }
 
-          const binaryReader = new FileReader();
-          binaryReader.onerror = (err) => {
-            throw new Error(`File API Error: Failed to fetch binary buffer stream from local storage.`);
-          };
+          let r = data[idx] + errors[errIdx];
+          let g = data[idx + 1] + errors[errIdx + 1];
+          let b = data[idx + 2] + errors[errIdx + 2];
 
-          binaryReader.onload = (ev) => {
-            try {
-              const arrayBuffer = ev.target.result;
-              const gr = gifHandler.createReader(arrayBuffer);
-              const frames = gifHandler.getFrames(gr);
+          r = Math.max(0, Math.min(255, r));
+          g = Math.max(0, Math.min(255, g));
+          b = Math.max(0, Math.min(255, b));
 
-              gifData = {
-                width: gr.width, height: gr.height, frames: frames,
-                globalPalette: gr.globalPalette(), lsd: { width: gr.width, height: gr.height },
-                readerInstance: gr
-              };
-              
-              gifMinDelay = Infinity;
-              frames.forEach(f => { gifMinDelay = Math.min(gifMinDelay, f.delay); });
-              if (gifMinDelay === Infinity) gifMinDelay = 100;
+          const nIdx = findNearestColor(r, g, b);
+          outputHexArray[y][x] = nIdx.toString(16);
 
-              if (gifData.frames.length > 0) {
-                statusDiv.textContent = `GIF parsed successfully: ${gifData.width}x${gifData.height} with ${gifData.frames.length} frames`;
-                canvas.width = gifData.width;
-                canvas.height = gifData.height;
-                
-                const dummyCanvas = document.createElement("canvas");
-                dummyCanvas.width = gr.width; dummyCanvas.height = gr.height;
-                const dummyCtx = dummyCanvas.getContext("2d");
-                const firstFrameImageData = gifHandler.getFrameImageData(gr, 0, dummyCtx);
-                ctx.putImageData(firstFrameImageData, 0, 0);
+          const actualColor = rgbPalette[nIdx - 1];
+          const er = r - actualColor.r;
+          const eg = g - actualColor.g;
+          const eb = b - actualColor.b;
 
-                img.src = canvas.toDataURL();
-              } else {
-                throw new Error("Target GIF file contains zero renderable frames.");
+          // ฟังก์ชันย่อยกระจาย Error ไปยังพิกเซลข้างเคียงเฉพาะจุดที่เป็นพิกเซลทึบแสงเท่านั้น
+          const distribute = (nx, ny, factor) => {
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+              const nIdxNext = (ny * w + nx) * 4;
+              if (data[nIdxNext + 3] >= 128) {
+                const eIdx = (ny * w + nx) * 3;
+                errors[eIdx] += er * factor;
+                errors[eIdx + 1] += eg * factor;
+                errors[eIdx + 2] += eb * factor;
               }
-            } catch (pipelineError) {
-              statusDiv.textContent = "Pipeline Critical Exception: Failed to decode binary structure.";
-              textarea.value = `[System Error Log]\nCannot decode GIF buffer: ${pipelineError.message}\n\nTechnical Stack Trace:\n${pipelineError.stack || ''}`;
-              runButton.setAttribute("disabled", "true");
-              downloadButton.setAttribute("disabled", "true");
-              gifData = null;
             }
           };
-          binaryReader.readAsArrayBuffer(file);
+          distribute(x + 1, y, 7 / 16);
+          distribute(x - 1, y + 1, 3 / 16);
+          distribute(x, y + 1, 5 / 16);
+          distribute(x + 1, y + 1, 1 / 16);
+        }
+      }
+    } else if (mode === "bayer") {
+      // โหมด Ordered Bayer Matrix: ซ่อมแซมโครงพิกเซลโปร่งแสงสอดคล้องกับมิติภาพอย่างแม่นยำ
+      const bayer = [
+        [0, 8, 2, 10],
+        [12, 4, 14, 6],
+        [3, 11, 1, 9],
+        [15, 7, 13, 5],
+      ];
+      const spread = 48;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = (y * w + x) * 4;
+          if (data[idx + 3] < 128) {
+            outputHexArray[y][x] = "0";
+            continue;
+          }
+          const bayerValue = bayer[y % 4][x % 4];
+          const factor = bayerValue / 16 - 0.5;
+
+          let r = data[idx] + factor * spread;
+          let g = data[idx + 1] + factor * spread;
+          let b = data[idx + 2] + factor * spread;
+
+          const nIdx = findNearestColor(r, g, b);
+          outputHexArray[y][x] = nIdx.toString(16);
+        }
+      }
+    }
+
+    // แสดงผลลัพธ์กลับลง Canvas พรีวิว
+    ctx.clearRect(0, 0, w, h);
+    const outImgData = ctx.createImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const char = outputHexArray[y][x];
+        const outIdx = (y * w + x) * 4;
+        if (!char || char === "0") {
+          outImgData.data[outIdx] = 0;
+          outImgData.data[outIdx + 1] = 0;
+          outImgData.data[outIdx + 2] = 0;
+          outImgData.data[outIdx + 3] = 0; // ตั้งค่าโปร่งแสงสมบูรณ์
         } else {
-          const localReader = new FileReader();
-          localReader.onload = (ev) => { img.src = ev.target.result; };
-          localReader.readAsDataURL(file);
+          const palColor = rgbPalette[parseInt(char, 16) - 1];
+          outImgData.data[outIdx] = palColor.r;
+          outImgData.data[outIdx + 1] = palColor.g;
+          outImgData.data[outIdx + 2] = palColor.b;
+          outImgData.data[outIdx + 3] = 255;
         }
       }
+    }
+    ctx.putImageData(outImgData, 0, 0);
 
-      // --- Processing Core & Dithering Calculations ---
-      async function convert(imgElement, frameImageData = null, frameIndex = 0) {
-        copyButton.innerText = "Copy code";
-        imgrender = [];
-        let sourceImageData, originalWidth, originalHeight;
+    // แปลงอาเรย์รหัสฐานสิบหกออกมาเป็น Code String ประจำอาร์เคดสไปรต์
+    let finalCodeStr = `img\\\`\\n`;
+    for (let y = 0; y < h; y++) {
+      finalCodeStr += "    " + outputHexArray[y].join("") + "\n";
+    }
+    finalCodeStr += `\\\``;
 
-        if (frameImageData) {
-          sourceImageData = frameImageData;
-          originalWidth = sourceImageData.width;
-          originalHeight = sourceImageData.height;
-        } else {
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = imgElement.naturalWidth;
-          tempCanvas.height = imgElement.naturalHeight;
-          const tempCtx = tempCanvas.getContext("2d", { willReadFrequently: true });
-          tempCtx.drawImage(imgElement, 0, 0, tempCanvas.width, tempCanvas.height);
-          sourceImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-          originalWidth = imgElement.naturalWidth;
-          originalHeight = imgElement.naturalHeight;
-        }
+    textarea.value = finalCodeStr;
+    copyButton.removeAttribute("disabled");
+    statusDiv.textContent = `Success: Convert completed in [${mode.toUpperCase()}] mode.`;
+    addToSessionLog(
+      "PIPELINE",
+      `Render successful for [${mode.toUpperCase()}] method.`,
+    );
+  } catch (pipelineErr) {
+    addToSessionLog("MATRIX_FAULT", pipelineErr.message, pipelineErr.stack);
+    displayErrorPopup(
+      "Matrix Pipeline Conversion Fault",
+      pipelineErr.message,
+      pipelineErr.stack,
+    );
+  }
+});
 
-        let targetWidth = imgElement.width;
-        let targetHeight = imgElement.height;
-        sizeTotal.width = targetWidth; sizeTotal.height = targetHeight;
-        imgSizeTotal.width = originalWidth; imgSizeTotal.height = originalHeight;
+copyButton.addEventListener("click", function (e) {
+  e.preventDefault();
+  textarea.select();
+  document.execCommand("copy");
+  copyButton.innerText = "Code copied to clipboard!";
+  addToSessionLog(
+    "IO",
+    "Output vector text data copied into clipboard register.",
+  );
+  setTimeout(() => {
+    copyButton.innerText = "Copy code";
+  }, 2000);
+});
 
-        canvas.width = targetWidth; canvas.height = targetHeight;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+downloadButton.addEventListener("click", function (e) {
+  e.preventDefault();
+  try {
+    const imgInfo = document.querySelector("#original-preview-zone img");
+    if (!imgInfo) return alert("No active image asset to download.");
 
-        const arcadeColors = [
-          "#00000000", document.getElementById("col1").value, document.getElementById("col2").value, document.getElementById("col3").value, document.getElementById("col4").value, document.getElementById("col5").value, document.getElementById("col6").value, document.getElementById("col7").value, document.getElementById("col8").value, document.getElementById("col9").value, document.getElementById("col10").value, document.getElementById("col11").value, document.getElementById("col12").value, document.getElementById("col13").value, document.getElementById("col14").value, document.getElementById("col15").value,
-        ].map((color, index) => ({ color: hexToRgb(color), index: index.toString(16) }));
+    let exportMimeType = originalMimeType;
+    if (originalMimeType === "image/gif") {
+      exportMimeType = "image/png";
+    }
 
-        const outputImageData = ctx.createImageData(targetWidth, targetHeight);
-        const xScale = originalWidth / targetWidth; const yScale = originalHeight / targetHeight;
-        const pixelColorMap = new Map();
-
-        if (currentMode === "errorDefusion") {
-          window.ditherBuffer = [];
-          for (let by = 0; by < targetHeight; by++) {
-            window.ditherBuffer[by] = [];
-            for (let bx = 0; bx < targetWidth; bx++) {
-              const orig = getPixelColor(sourceImageData, Math.max(0, Math.min(Math.floor(bx * xScale), sourceImageData.width - 1)), Math.max(0, Math.min(Math.floor(by * yScale), sourceImageData.height - 1)));
-              window.ditherBuffer[by][bx] = { ...orig };
-            }
-          }
-        }
-
-        const bayerMatrix4x4 = [ [0 / 16, 8 / 16, 2 / 16, 10 / 16], [12 / 16, 4 / 16, 14 / 16, 6 / 16], [3 / 16, 11 / 16, 1 / 16, 9 / 16], [15 / 16, 7 / 16, 13 / 16, 5 / 16] ];
-
-        for (let y = 0; y < targetHeight; y++) {
-          for (let x = 0; x < targetWidth; x++) {
-            const clampedOriginalX = Math.max(0, Math.min(Math.floor(x * xScale), sourceImageData.width - 1));
-            const clampedOriginalY = Math.max(0, Math.min(Math.floor(y * yScale), sourceImageData.height - 1));
-            const originalPixelColor = getPixelColor(sourceImageData, clampedOriginalX, clampedOriginalY);
-
-            if (originalPixelColor.a !== 0) {
-              if (currentMode === "solid") {
-                const colorKey = `${originalPixelColor.r},${originalPixelColor.g},${originalPixelColor.b}`;
-                let nearest = pixelColorMap.has(colorKey) ? pixelColorMap.get(colorKey) : getNearestColorFast(originalPixelColor, arcadeColors);
-                pixelColorMap.set(colorKey, nearest);
-                ctx.fillStyle = `rgb(${nearest.color.r}, ${nearest.color.g}, ${nearest.color.b})`; ctx.fillRect(x, y, 1, 1);
-                setPixelColor(outputImageData, x, y, nearest.color.r, nearest.color.g, nearest.color.b, 255);
-              } else if (currentMode === "errorDefusion") {
-                const bufColor = window.ditherBuffer[y][x];
-                const nearest = getNearestColorFast(bufColor, arcadeColors);
-                ctx.fillStyle = `rgb(${nearest.color.r}, ${nearest.color.g}, ${nearest.color.b})`; ctx.fillRect(x, y, 1, 1);
-                setPixelColor(outputImageData, x, y, nearest.color.r, nearest.color.g, nearest.color.b, 255);
-                const err = { r: bufColor.r - nearest.color.r, g: bufColor.g - nearest.color.g, b: bufColor.b - nearest.color.b };
-                function distributeError(dx, dy, factor) {
-                  const nx = x + dx; const ny = y + dy;
-                  if (nx >= 0 && nx < targetWidth && ny >= 0 && ny < targetHeight) {
-                    const nbuf = window.ditherBuffer[ny][nx];
-                    nbuf.r = Math.max(0, Math.min(255, nbuf.r + err.r * factor)); nbuf.g = Math.max(0, Math.min(255, nbuf.g + err.g * factor)); nbuf.b = Math.max(0, Math.min(255, nbuf.b + err.b * factor));
-                  }
-                }
-                distributeError(1, 0, 7 / 16); distributeError(-1, 1, 3 / 16); distributeError(0, 1, 5 / 16); distributeError(1, 1, 1 / 16);
-              } else if (currentMode === "bayerMatrix") {
-                const threshold = bayerMatrix4x4[y % 4][x % 4] - 0.5; const spread = 64;
-                const ditheredColor = { r: Math.max(0, Math.min(255, originalPixelColor.r + threshold * spread)), g: Math.max(0, Math.min(255, originalPixelColor.g + threshold * spread)), b: Math.max(0, Math.min(255, originalPixelColor.b + threshold * spread)) };
-                const colorKey = `bayer_${Math.floor(ditheredColor.r)},${Math.floor(ditheredColor.g)},${Math.floor(ditheredColor.b)}`;
-                let nearest = pixelColorMap.has(colorKey) ? pixelColorMap.get(colorKey) : getNearestColorFast(ditheredColor, arcadeColors);
-                pixelColorMap.set(colorKey, nearest);
-                ctx.fillStyle = `rgb(${nearest.color.r}, ${nearest.color.g}, ${nearest.color.b})`; ctx.fillRect(x, y, 1, 1);
-                setPixelColor(outputImageData, x, y, nearest.color.r, nearest.color.g, nearest.color.b, 255);
-              }
-            }
-          }
-        }
-
-        let makeCodeString = "";
-        const paletteLookup = arcadeColors.reduce((map, color) => { map[rgbToHex(color.color.r, color.color.g, color.color.b)] = color.index; return map; }, {});
-        paletteLookup[rgbToHex(0, 0, 0)] = "0";
-
-        for (let y = 0; y < targetHeight; y++) {
-          let rowString = "";
-          for (let x = 0; x < targetWidth; x++) {
-            const pixelColor = getPixelColor(outputImageData, x, y);
-            const pixelHex = rgbToHex(pixelColor.r, pixelColor.g, pixelColor.b);
-            let colorIndex = "0";
-            if (pixelColor.a > 0) {
-              colorIndex = (paletteLookup[pixelHex] !== undefined) ? paletteLookup[pixelHex] : getNearestColorFast(pixelColor, arcadeColors).index;
-            }
-            colorIndex = colorIndex.toLowerCase() === "0" ? "f" : colorIndex.toLowerCase();
-            rowString += colorIndex;
-          }
-          makeCodeString += rowString + "\n";
-        }
-        return { spriteCode: `img\`\n${makeCodeString}\`` };
-      }
-
-      // --- Main Trigger Execution ---
-      async function running() {
-        runButton.setAttribute("disabled", "true"); copyButton.setAttribute("disabled", "true");
-        textarea.value = ""; statusDiv.textContent = "Executing image rendering pipelines...";
-
-        const img = document.querySelector("img");
-        if (!img || (!gifData && (!img.complete || img.naturalWidth === 0))) {
-          throw new Error("Pipeline Error: Absolute asset image target is missing or incomplete.");
-        }
-
-        const currentSizeMode = document.querySelector("input[name='sizeOption']:checked").id;
-        updateImageDimensions(img, currentSizeMode);
-
-        let dateString = new Date().toISOString().replaceAll("-", "").replaceAll(":", "").replaceAll(".", "");
-        canvasName = `canvas${dateString}`;
-
-        if (gifData && gifData.frames.length > 1) {
-          statusDiv.textContent = `Compiling GIF Animation sequence [Total: ${gifData.frames.length} frames]...`;
-          const frameResults = [];
-
-          const gr = gifData.readerInstance; const frames = gifData.frames;
-          const virtualCanvas = document.createElement("canvas");
-          virtualCanvas.width = gifData.width; virtualCanvas.height = gifData.height;
-          const virtualCtx = virtualCanvas.getContext("2d");
-
-          for (let i = 0; i < frames.length; i++) {
-            statusDiv.textContent = `Analyzing & rendering matrix sequence frame ${i + 1}/${frames.length}...`;
-            const blendedImageData = gifHandler.getFrameImageData(gr, i, virtualCtx);
-            virtualCtx.putImageData(blendedImageData, 0, 0);
-
-            const result = await convert(img, blendedImageData, i);
-            frameResults.push({ spriteCode: result.spriteCode, delay: frames[i].delay });
-          }
-
-          let gifOutput = `let gifFrames${dateString}: Image[] = [\n`;
-          frameResults.forEach((frame) => { gifOutput += `  ${frame.spriteCode},\n`; });
-          gifOutput += `];\n\nlet frameDelays${dateString} = [\n`;
-          frameResults.forEach((frame) => { gifOutput += `  ${frame.delay},\n`; });
-          gifOutput += `];\n\nlet currentFrame${dateString} = 0;\n`;
-          gifOutput += `let animationSprite${dateString} = sprites.create(gifFrames${dateString}[0], SpriteKind.Player);\n`;
-          gifOutput += `game.onEveryInterval(frameDelays${dateString}[0], function () {\n`;
-          gifOutput += `  currentFrame${dateString} = (currentFrame${dateString} + 1) % gifFrames${dateString}.length;\n`;
-          gifOutput += `  animationSprite${dateString}.setImage(gifFrames${dateString}[currentFrame${dateString}]);\n});\n`;
-
-          textarea.value = gifOutput;
-          statusDiv.textContent = `Conversion Complete. Original Size: (${imgSizeTotal.width}x${imgSizeTotal.height}) -> Result Size: (${sizeTotal.width}x${sizeTotal.height})`;
-          copyButton.removeAttribute("disabled"); downloadButton.removeAttribute("disabled");
-        } else {
-          let singleFrameData = null;
-          if (gifData && gifData.frames.length === 1) {
-            const gr = gifData.readerInstance;
-            const dummyCanvas = document.createElement("canvas");
-            dummyCanvas.width = gr.width; dummyCanvas.height = gr.height;
-            singleFrameData = gifHandler.getFrameImageData(gr, 0, dummyCanvas.getContext("2d"));
-          }
-          const result = await convert(img, singleFrameData);
-          textarea.value = `let mySprite${dateString}: Image = ${result.spriteCode};\nlet playerSprite${dateString} = sprites.create(mySprite${dateString}, SpriteKind.Player);\n`;
-          statusDiv.textContent = `Conversion Complete. Original Size: (${imgSizeTotal.width}x${imgSizeTotal.height}) -> Result Size: (${sizeTotal.width}x${sizeTotal.height})`;
-          copyButton.removeAttribute("disabled"); downloadButton.removeAttribute("disabled");
-        }
-        inputWidth.value = canvas.width; inputHeight.value = canvas.height; runButton.removeAttribute("disabled");
-      }
-
-      function updateImageDimensions(img, sizeMode) {
-        let imageWidth = originalImageSize.width; let imageHeight = originalImageSize.height;
-        if (sizeMode === "custom") {
-          let customWidth = parseInt(inputWidth.value, 10); let customHeight = parseInt(inputHeight.value, 10);
-          if (!isNaN(customWidth) && !isNaN(customHeight)) { imageWidth = customWidth; imageHeight = customHeight; }
-          else if (!isNaN(customWidth)) { imageWidth = customWidth; imageHeight = Math.round(originalImageSize.height * (customWidth / originalImageSize.width)); }
-          else if (!isNaN(customHeight)) { imageWidth = Math.round(originalImageSize.width * (customHeight / originalImageSize.height)); imageHeight = customHeight; }
-        } else if (sizeMode === "scale") {
-          const factor = parseFloat(scaleFactor.value);
-          if (!isNaN(factor)) { imageWidth = Math.round(originalImageSize.width * factor); imageHeight = Math.round(originalImageSize.height * factor); }
-        } else if (sizeMode === "full-width") { imageWidth = 160; imageHeight = Math.round(originalImageSize.height * (160 / originalImageSize.width)); }
-        else if (sizeMode === "full-height") { imageWidth = Math.round(originalImageSize.width * (120 / originalImageSize.height)); imageHeight = 120; }
-
-        img.width = Math.max(1, Math.round(imageWidth)); img.height = Math.max(1, Math.round(imageHeight));
-        canvas.style.width = img.width + "px"; canvas.style.height = img.height + "px";
-      }
-
-      document.querySelectorAll("input#width").forEach((iwidth) => {
-        iwidth.addEventListener("input", function () {
-          if (inputRatio.checked) {
-            const img = document.querySelector("img");
-            const baseW = img ? img.width : canvas.width; const baseH = img ? img.height : canvas.height;
-            inputHeight.value = Math.round(baseH * (this.value / baseW));
-          }
-        });
-      });
-
-      document.querySelectorAll("input#height").forEach((iheight) => {
-        iheight.addEventListener("input", function () {
-          if (inputRatio.checked) {
-            const img = document.querySelector("img");
-            const baseW = img ? img.width : canvas.width; const baseH = img ? img.height : canvas.height;
-            inputWidth.value = Math.round(baseW * (this.value / baseH));
-          }
-        });
-      });
-
-      function getRatioChecking() {
-        if (inputRatio.checked) {
-          const img = document.querySelector("img");
-          inputHeight.value = img ? img.height : canvas.height; inputWidth.value = img ? img.width : canvas.width;
-        }
-      }
-
-      copyButton.addEventListener("click", function () { textarea.select(); document.execCommand("copy"); copyButton.innerText = "Code copied to clipboard!"; });
-      downloadButton.addEventListener("click", function (e) {
-        e.preventDefault(); const imgInfo = document.querySelector("img"); if (!imgInfo || !imgInfo.src) return alert("No image to download.");
-        const img = canvas.toDataURL(imgInfo.type || "image/png"); if (!img) return alert("No image to download.");
-        const link = document.createElement("a"); link.href = img; link.download = canvasName; link.click(); link.remove();
-      });
-
-      console.log("Offline Embedded Module with Global Error Listeners Activated.");
+    const dataUrl = canvas.toDataURL(exportMimeType);
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = canvasName;
+    link.click();
+    link.remove();
+    addToSessionLog(
+      "IO",
+      `Triggered canvas attachment file download: ${canvasName}`,
+    );
+  } catch (dnErr) {
+    addToSessionLog("DOWNLOAD_FAULT", dnErr.message, dnErr.stack);
+    displayErrorPopup("IO Canvas Download Error", dnErr.message, dnErr.stack);
+  }
+});
