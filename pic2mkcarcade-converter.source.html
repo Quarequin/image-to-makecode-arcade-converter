@@ -95,7 +95,7 @@
     cursor: pointer;
     font-size: 13px;
     text-align: center;
-    white-space: nowrap;
+    white-space: wrap;
     }
     .action-buttons button:disabled {
     border-color: #444;
@@ -406,6 +406,12 @@
       .colorboard {
       width: 100%;
       }
+      .colorboard .colorpad{
+      grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+      }
+      .colorboard .colorpad .color-pair {
+      gap: 2px 1px;
+      }
       .image-preview-container {
       flex-direction: column;
       }
@@ -440,7 +446,7 @@
     <div id="status">System Status: Awaiting Image Upload Asset...</div>
 
     <label>Select Target Source Image:</label>
-    <input type="file" id="file" accept="image/*" />
+    <input type="file" id="file" accept="image/png,image/jpeg,image/jpg,image/jxl,image/bmp,image/gif" />
 
     <div id="parameters">
       <div class="settings-group">
@@ -473,26 +479,26 @@
         <div class="colorboard">
           <div class="palette-loader-container">
             <label>Import Custom Palette File (.txt, .hex):</label>
-            <input type="file" id="palette-file-reader" accept=".txt,.hex" />
+            <input type="file" id="palette-file-reader" accept="*.txt,*.hex" />
           </div>
 
           <span style="font-weight: bold; color: rgb(255, 240, 157);">Active Color Registers (1-15):</span>
           <div class="colorpad">
-            <div class="color-pair"><label>Color 1:</label><input type="color" value="#ffffff" /><input type="text" class="colortext" value="#ffffff" /></div>
-            <div class="color-pair"><label>Color 2:</label><input type="color" value="#ff2121" /><input type="text" class="colortext" value="#ff2121" /></div>
-            <div class="color-pair"><label>Color 3:</label><input type="color" value="#ff93c4" /><input type="text" class="colortext" value="#ff93c4" /></div>
-            <div class="color-pair"><label>Color 4:</label><input type="color" value="#ff8135" /><input type="text" class="colortext" value="#ff8135" /></div>
-            <div class="color-pair"><label>Color 5:</label><input type="color" value="#fff609" /><input type="text" class="colortext" value="#fff609" /></div>
-            <div class="color-pair"><label>Color 6:</label><input type="color" value="#249ca3" /><input type="text" class="colortext" value="#249ca3" /></div>
-            <div class="color-pair"><label>Color 7:</label><input type="color" value="#78dc52" /><input type="text" class="colortext" value="#78dc52" /></div>
-            <div class="color-pair"><label>Color 8:</label><input type="color" value="#003fad" /><input type="text" class="colortext" value="#003fad" /></div>
-            <div class="color-pair"><label>Color 9:</label><input type="color" value="#87f2ff" /><input type="text" class="colortext" value="#87f2ff" /></div>
-            <div class="color-pair"><label>Color 10:</label><input type="color" value="#8e2ec4" /><input type="text" class="colortext" value="#8e2ec4" /></div>
-            <div class="color-pair"><label>Color 11:</label><input type="color" value="#a4839f" /><input type="text" class="colortext" value="#a4839f" /></div>
-            <div class="color-pair"><label>Color 12:</label><input type="color" value="#5c406c" /><input type="text" class="colortext" value="#5c406c" /></div>
-            <div class="color-pair"><label>Color 13:</label><input type="color" value="#e5cdc4" /><input type="text" class="colortext" value="#e5cdc4" /></div>
-            <div class="color-pair"><label>Color 14:</label><input type="color" value="#91463d" /><input type="text" class="colortext" value="#91463d" /></div>
-            <div class="color-pair"><label>Color 15:</label><input type="color" value="#000000" /><input type="text" class="colortext" value="#000000" /></div>
+            <div class="color-pair"><label>Color 1</label><input type="color" value="#ffffff" /><input type="text" class="colortext" value="#ffffff" /></div>
+            <div class="color-pair"><label>Color 2</label><input type="color" value="#ff2121" /><input type="text" class="colortext" value="#ff2121" /></div>
+            <div class="color-pair"><label>Color 3</label><input type="color" value="#ff93c4" /><input type="text" class="colortext" value="#ff93c4" /></div>
+            <div class="color-pair"><label>Color 4</label><input type="color" value="#ff8135" /><input type="text" class="colortext" value="#ff8135" /></div>
+            <div class="color-pair"><label>Color 5</label><input type="color" value="#fff609" /><input type="text" class="colortext" value="#fff609" /></div>
+            <div class="color-pair"><label>Color 6</label><input type="color" value="#249ca3" /><input type="text" class="colortext" value="#249ca3" /></div>
+            <div class="color-pair"><label>Color 7</label><input type="color" value="#78dc52" /><input type="text" class="colortext" value="#78dc52" /></div>
+            <div class="color-pair"><label>Color 8</label><input type="color" value="#003fad" /><input type="text" class="colortext" value="#003fad" /></div>
+            <div class="color-pair"><label>Color 9</label><input type="color" value="#87f2ff" /><input type="text" class="colortext" value="#87f2ff" /></div>
+            <div class="color-pair"><label>Color 10</label><input type="color" value="#8e2ec4" /><input type="text" class="colortext" value="#8e2ec4" /></div>
+            <div class="color-pair"><label>Color 11</label><input type="color" value="#a4839f" /><input type="text" class="colortext" value="#a4839f" /></div>
+            <div class="color-pair"><label>Color 12</label><input type="color" value="#5c406c" /><input type="text" class="colortext" value="#5c406c" /></div>
+            <div class="color-pair"><label>Color 13</label><input type="color" value="#e5cdc4" /><input type="text" class="colortext" value="#e5cdc4" /></div>
+            <div class="color-pair"><label>Color 14</label><input type="color" value="#91463d" /><input type="text" class="colortext" value="#91463d" /></div>
+            <div class="color-pair"><label>Color 15</label><input type="color" value="#000000" /><input type="text" class="colortext" value="#000000" /></div>
           </div>
         </div>
       </div>
@@ -517,7 +523,7 @@
       </div>
     </div>
 
-    <textarea id="output" placeholder="The matrix assembly hex string will be generated into this layout sector..."></textarea>
+    <textarea id="output" placeholder="The matrix assembly hex string will be generated into this layout sector..." readonly></textarea>
 
     <script>
       let htmlLog = [];
